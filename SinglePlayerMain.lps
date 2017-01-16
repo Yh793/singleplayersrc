@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectSession>
+    <PathDelim Value="\"/>
+    <Version Value="9"/>
+    <BuildModes Active="Default"/>
+    <Units Count="13">
+      <Unit0>
+        <Filename Value="SinglePlayerMain.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="23"/>
+        <CursorPos X="30" Y="57"/>
+        <UsageCount Value="200"/>
+      </Unit0>
+      <Unit1>
+        <Filename Value="core.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="MMCCore"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="core"/>
+        <TopLine Value="49"/>
+        <CursorPos Y="72"/>
+        <UsageCount Value="200"/>
+        <Loaded Value="True"/>
+        <LoadedDesigner Value="True"/>
+      </Unit1>
+      <Unit2>
+        <Filename Value="singleplayer.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="SinglePlayerGUI"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="SinglePlayer"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="5018"/>
+        <CursorPos X="48" Y="5032"/>
+        <UsageCount Value="200"/>
+        <Loaded Value="True"/>
+        <LoadedDesigner Value="True"/>
+      </Unit2>
+      <Unit3>
+        <Filename Value="loading.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="LoadingGUI"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="loading"/>
+        <EditorIndex Value="1"/>
+        <TopLine Value="32"/>
+        <CursorPos X="2" Y="52"/>
+        <UsageCount Value="200"/>
+        <Loaded Value="True"/>
+        <LoadedDesigner Value="True"/>
+      </Unit3>
+      <Unit4>
+        <Filename Value="Mp3FileUtils.pas"/>
+        <UnitName Value="Mp3FileUtils"/>
+        <EditorIndex Value="6"/>
+        <TopLine Value="2278"/>
+        <CursorPos X="24" Y="1480"/>
+        <UsageCount Value="101"/>
+        <Loaded Value="True"/>
+      </Unit4>
+      <Unit5>
+        <Filename Value="bass.pas"/>
+        <UnitName Value="BASS"/>
+        <EditorIndex Value="8"/>
+        <TopLine Value="75"/>
+        <CursorPos X="30" Y="95"/>
+        <UsageCount Value="100"/>
+        <Loaded Value="True"/>
+      </Unit5>
+      <Unit6>
+        <Filename Value="bass_fx.pas"/>
+        <UnitName Value="BASS_FX"/>
+        <EditorIndex Value="7"/>
+        <TopLine Value="270"/>
+        <CursorPos X="4" Y="275"/>
+        <UsageCount Value="100"/>
+        <Loaded Value="True"/>
+      </Unit6>
+      <Unit7>
+        <Filename Value="bass_aac.pas"/>
+        <UnitName Value="BASS_AAC"/>
+        <EditorIndex Value="4"/>
+        <CursorPos X="74" Y="10"/>
+        <UsageCount Value="101"/>
+        <Loaded Value="True"/>
+      </Unit7>
+      <Unit8>
+        <Filename Value="tags.pas"/>
+        <UnitName Value="tags"/>
+        <EditorIndex Value="5"/>
+        <CursorPos X="49" Y="13"/>
+        <UsageCount Value="101"/>
+        <Loaded Value="True"/>
+      </Unit8>
+      <Unit9>
+        <Filename Value="bassalac.pas"/>
+        <UnitName Value="BASSALAC"/>
+        <EditorIndex Value="3"/>
+        <CursorPos X="25" Y="23"/>
+        <UsageCount Value="69"/>
+        <Loaded Value="True"/>
+      </Unit9>
+      <Unit10>
+        <Filename Value="C:\lazarus14\fpc\2.6.4\source\rtl\objpas\sysutils\sysstrh.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="62"/>
+        <CursorPos X="23" Y="82"/>
+        <UsageCount Value="7"/>
+      </Unit10>
+      <Unit11>
+        <Filename Value="C:\lazarus14\fpc\2.6.4\source\rtl\objpas\classes\classesh.inc"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="940"/>
+        <CursorPos X="17" Y="928"/>
+        <UsageCount Value="10"/>
+      </Unit11>
+      <Unit12>
+        <Filename Value="C:\lazarus14\fpc\2.6.4\source\rtl\objpas\sysutils\filutilh.inc"/>
+        <EditorIndex Value="-1"/>
+        <CursorPos X="3" Y="59"/>
+        <UsageCount Value="10"/>
+      </Unit12>
+    </Units>
+    <JumpHistory Count="29" HistoryIndex="28">
+      <Position1>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="6197" Column="26" TopLine="6167"/>
+      </Position1>
+      <Position2>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="7456" Column="17" TopLine="7426"/>
+      </Position2>
+      <Position3>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="7470" Column="17" TopLine="7440"/>
+      </Position3>
+      <Position4>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="7485" Column="17" TopLine="7455"/>
+      </Position4>
+      <Position5>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="9558" Column="19" TopLine="9529"/>
+      </Position5>
+      <Position6>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="9606" Column="19" TopLine="9577"/>
+      </Position6>
+      <Position7>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="9634" Column="22" TopLine="9604"/>
+      </Position7>
+      <Position8>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="9718" Column="17" TopLine="9689"/>
+      </Position8>
+      <Position9>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="9805" Column="17" TopLine="9776"/>
+      </Position9>
+      <Position10>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="569" Column="26" TopLine="551"/>
+      </Position10>
+      <Position11>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="6172" Column="17" TopLine="6142"/>
+      </Position11>
+      <Position12>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="6310" Column="13" TopLine="6288"/>
+      </Position12>
+      <Position13>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="691" Column="23" TopLine="674"/>
+      </Position13>
+      <Position14>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="6661" Column="32" TopLine="6640"/>
+      </Position14>
+      <Position15>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="6659" Column="18" TopLine="6640"/>
+      </Position15>
+      <Position16>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="588" Column="21" TopLine="568"/>
+      </Position16>
+      <Position17>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="636" Column="21" TopLine="606"/>
+      </Position17>
+      <Position18>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="3800" Column="54" TopLine="3771"/>
+      </Position18>
+      <Position19>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="3873" Column="22" TopLine="3844"/>
+      </Position19>
+      <Position20>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="5099" Column="36" TopLine="5069"/>
+      </Position20>
+      <Position21>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="5900" Column="16" TopLine="5871"/>
+      </Position21>
+      <Position22>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="6574" Column="37" TopLine="6544"/>
+      </Position22>
+      <Position23>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="6641" Column="15" TopLine="6612"/>
+      </Position23>
+      <Position24>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="855" Column="11" TopLine="840"/>
+      </Position24>
+      <Position25>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="11" Column="54"/>
+      </Position25>
+      <Position26>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="754" Column="12" TopLine="724"/>
+      </Position26>
+      <Position27>
+        <Filename Value="Mp3FileUtils.pas"/>
+        <Caret Line="215" Column="64"/>
+      </Position27>
+      <Position28>
+        <Filename Value="Mp3FileUtils.pas"/>
+        <Caret Line="240" Column="24" TopLine="222"/>
+      </Position28>
+      <Position29>
+        <Filename Value="singleplayer.pas"/>
+        <Caret Line="855" Column="11" TopLine="825"/>
+      </Position29>
+    </JumpHistory>
+  </ProjectSession>
+</CONFIG>
