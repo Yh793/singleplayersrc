@@ -3990,7 +3990,6 @@ begin
   while not eof(langfile) do
    begin
     readln(langfile,langstr);
-    //langstr:=ansitoutf8(langstr);
     if (langstr='[words'+inttostr(singleplayersettings.nomlang)+']') and (findl=0) then begin findl:=1; continue; end;
     if findl=1 then
      begin
@@ -5011,7 +5010,7 @@ result:=str;
 if str<>'' then
  begin
   case str of
-   '%track%': begin result:=UTF8Encode(delbanner(artist+' - '+title));  exit; end;
+   '%track%': begin result:=delbanner(artist+' - '+title);  exit; end;
    '%radiobuffering%': begin if progress>0 then result:=getfromlangpack('buffering')+' '+ansitoutf8(inttostr(Progress)+'%') else result:='';  exit; end;
    '%playervol%': begin result:=realtostr(SinglePlayerSettings.curentvol,0); exit; end;
    '%playfolder%': begin result:=curpldir; exit; end;
@@ -5024,8 +5023,8 @@ if str<>'' then
    '%kolltrack%': begin result:=inttostr(SinglePlayerSettings.kolltrack); exit; end;
    '%skinname%': begin result:=SinglePlayerSettings.skin; exit; end;
    '%curpage%': begin result:=curentpage; exit; end;
-   '%artisttrack%': begin result:=UTF8Encode(delbanner(artist)); exit; end;  //ansitoutf8(
-   '%titletrack%': begin result:=UTF8Encode(delbanner(title)); exit; end;   //ansitoutf8(
+   '%artisttrack%': begin result:=delbanner(artist); exit; end;
+   '%titletrack%': begin result:=delbanner(title); exit; end;
    '%curentdir%': begin result:=curentdir; exit; end;
    '%playfile%': begin result:=curenttrack; exit; end;
    '%curplaylistpage%': begin result:=inttostr(pageindex); exit; end;
@@ -5035,10 +5034,10 @@ if str<>'' then
    '%time%': begin result:=timeinicon; exit; end;
    '%date%': begin result:=dateinicon; exit; end;
    '%conradiostr%': begin result:=conradiostr; exit; end;
-   '%genreintrack%': begin result:=UTF8Encode(thisTagv2.Genre); exit; end;  //ansitoutf8(
-   '%albumintrack%': begin result:=UTF8Encode(thisTagv2.Album); exit; end;  //ansitoutf8(
-   '%yearintrack%': begin result:=UTF8Encode(thisTagv2.Year); exit; end;    //ansitoutf8(
-   '%commentintrack%': begin result:=UTF8Encode(thisTagv2.Comment); exit; end;  //ansitoutf8(
+   '%genreintrack%': begin result:=UTF8Encode(thisTagv2.Genre); exit; end;
+   '%albumintrack%': begin result:=UTF8Encode(thisTagv2.Album); exit; end;
+   '%yearintrack%': begin result:=UTF8Encode(thisTagv2.Year); exit; end;
+   '%commentintrack%': begin result:=UTF8Encode(thisTagv2.Comment); exit; end;
    '%curentsysvol%': begin  result:=inttostr(SinglePlayerSettings.curentsysvol); exit; end;
    '%radioconnect%': begin  if (connecting<>0) and (progress<1) then result:=getfromlangpack('connectiradio')+' '+inttostr(radioerror) else result:=''; exit; end;
    '%effectpage%': begin
@@ -5552,22 +5551,22 @@ begin
    begin
     pr2:=0;
     pr4:=0;
-    if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))>plset.tracktitlewidth then
+    if SinglePlayerGUI.Canvas.TextWidth(artisttitle)>plset.tracktitlewidth then
      begin
      if SinglePlayerSettings.track2str=0 then scrolltitle:=delbanner(artist+title) else scrolltitle:=delbanner(artist);
       artisttitle:='';
-      for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))<=plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
+      for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(artisttitle)<=plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
      end;
 
      if SinglePlayerSettings.track2str=1 then
       begin
        pr2:=0;
        pr4:=0;
-        if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))>plset.tracktitlewidth then
+        if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))>plset.tracktitlewidth then
          begin
           scrolltitle2:=delbanner(title);
           scrolltitlestr:='';
-          for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))<=plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
+          for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))<=plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
          end;
        end;
      end;
@@ -5590,39 +5589,39 @@ if curentpage='singleplayer' then
 if SinglePlayerSettings.scrolltrack=1 then
 begin
 
-if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))>plset.tracktitlewidth then
+if SinglePlayerGUI.Canvas.TextWidth(artisttitle)>plset.tracktitlewidth then
 begin
 scrolltitle:='';
 pr2:=0;
 for i:=pr to length(artisttitle) do scrolltitle:=scrolltitle+artisttitle[i];
 inc(pr);
 artisttitle:='';
-for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))<plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
-if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))<=plset.tracktitlewidth then begin wait:=3; pr:=1; end;
+for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(artisttitle)<plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
+if SinglePlayerGUI.Canvas.TextWidth(artisttitle)<=plset.tracktitlewidth then begin wait:=3; pr:=1; end;
 if pr=2 then wait:=3;
 end else
 begin
 if SinglePlayerSettings.scrollsmalltrack=1 then
 begin
-if myalign(plset.tracktitleleft,artisttitle,0)+SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))+pr2<myalign(plset.tracktitleleft,artisttitle,0)+plset.tracktitlewidth then pr2:=pr2+15 else begin pr2:=0; pr4:=-15; end;
+if myalign(plset.tracktitleleft,artisttitle,0)+SinglePlayerGUI.Canvas.TextWidth(artisttitle)+pr2<myalign(plset.tracktitleleft,artisttitle,0)+plset.tracktitlewidth then pr2:=pr2+15 else begin pr2:=0; pr4:=-15; end;
 end else pr2:=0;
 end;
 
-if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))>plset.tracktitlewidth then
+if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))>plset.tracktitlewidth then
 begin
 scrolltitle2:='';
 pr4:=0;
 for i:=pr3 to length(scrolltitlestr) do scrolltitle2:=scrolltitle2+scrolltitlestr[i];
 inc(pr3);
 scrolltitlestr:='';
-for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))<plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
-if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))<=plset.tracktitlewidth then begin wait:=3;pr3:=1; end;
+for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))<plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
+if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))<=plset.tracktitlewidth then begin wait:=3;pr3:=1; end;
 if pr3=2 then wait:=3;
 end else
 begin
 if SinglePlayerSettings.scrollsmalltrack=1 then
 begin
-if myalign(plset.tracktitleleft,scrolltitlestr,0)+SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))+pr4<myalign(plset.tracktitleleft,scrolltitlestr,0)+plset.tracktitlewidth then pr4:=pr4+15 else begin pr4:=0; pr2:=0; end;
+if myalign(plset.tracktitleleft,scrolltitlestr,0)+SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))+pr4<myalign(plset.tracktitleleft,scrolltitlestr,0)+plset.tracktitlewidth then pr4:=pr4+15 else begin pr4:=0; pr2:=0; end;
 end else pr4:=0;
 end;
 
@@ -6246,8 +6245,8 @@ begin
      end;
    except
    end;
-   if thisTagv2.Artist<>'' then artist:=thisTagv2.Artist;
-   if thisTagv2.Title<>'' then title:=thisTagv2.Title;
+   if thisTagv2.Artist<>'' then artist:=UTF8Encode(thisTagv2.Artist);
+   if thisTagv2.Title<>'' then title:=UTF8Encode(thisTagv2.Title);
    if (artist<>'') and (title<>'') and (SinglePlayerSettings.track2str=0) then title:=' - '+title;
    if (artist+title='') or (singleplayersettings.readtags=0) then
     begin
@@ -6718,9 +6717,10 @@ begin
          end;
      if singleplayersettings.readtags=1 then
        begin
-        thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
-        thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
-        thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
+        thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
+        thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
+        thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
+        //thisTagv2.ReadFromFile(musictrack);
      if SinglePlayerSettings.playfromgenre=1 then                                   {если автоэквалайзер то выставляем экв по значению флак тега}
      begin
       while (lowercase(thisTagv2.Genre)<>lowercase(copy(genremass[curentgenre,1],1,pos(';',genremass[curentgenre,1])-1))) and (FileExists(musictrack)) and (SinglePlayerSettings.playedtrack<SinglePlayerSettings.kolltrack) and (SinglePlayerSettings.playedtrack<>1) do
@@ -6758,9 +6758,10 @@ begin
              if chinfo.ctype <> BASS_CTYPE_STREAM_ALAC then Channel := BASS_MP4_StreamCreateFile(false, PChar(musictrack), 0, 0, BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
             end;
            end;
-        thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
-        thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
-        thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
+        thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
+        thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
+        thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
+        //thisTagv2.ReadFromFile(musictrack);
          end else thisTagv2.ReadFromFile(musictrack);
        end;
      end;
@@ -6820,9 +6821,10 @@ begin
            end;
           if singleplayersettings.readtags=1 then
            begin
-            thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
-            thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
-            thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
+            thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
+            thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
+            thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
+           //thisTagv2.ReadFromFile(musictrack);
            end;
          end else
          begin
@@ -6860,9 +6862,10 @@ begin
         begin
          if singleplayersettings.readtags=1 then
           begin
-           thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
-           thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
-           thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
+           thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
+           thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
+           thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
+          //thisTagv2.ReadFromFile(musictrack);
           end;
         end;
         if SinglePlayerSettings.showcoverpl=1 then
@@ -7101,7 +7104,7 @@ begin
   kolfilefolder:=0;
   SinglePlayerGUI.Canvas.Font.Color:=plset.curentdircolor;
   SinglePlayerGUI.Canvas.Font.Size:=plset.curentdirsize;
-  SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.curentdirleft,ExtractFileName(curentdir),1),plset.curentdirtop,ExtractFileName(ansitoutf8(curentdir)));
+  SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.curentdirleft,ExtractFileName(curentdir),1),plset.curentdirtop,ExtractFileName(UTF8Encode(curentdir)));
   SinglePlayerGUI.Canvas.Font.Color:=plset.playlisttextncolor;
   SinglePlayerGUI.Canvas.Font.Size:=plset.playlisttextnsize;
   SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), myalign(plset.playlisttextnleft,getfromlangpack('page')+' '+inttostr(pageindex)+'/'+inttostr(kollpage),1),plset.playlisttextntop,getfromlangpack('page')+' '+inttostr(pageindex)+'/'+inttostr(kollpage));
@@ -7165,7 +7168,7 @@ begin
              if indexmass>0 then for n:=1 to indexmass do
                begin
                 if n=1 then sm:=0 else sm:=SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
-                SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[getindexicon('folder.jpg')].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), ansitoutf8(mass[n]));
+                SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[getindexicon('folder.jpg')].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), UTF8Encode(mass[n]));
                end;
              folders[i,1]:=disk+'\'+searchtrack.Name;
              folders[i,2]:='folder';
@@ -7185,7 +7188,7 @@ begin
                inc(kolfilefolder);
 
                if marked=0 then SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('foldertree.jpg')]) else SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('foldertreemarked.jpg')]);
-               SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[getindexicon('foldertree.jpg')].width+plset.treetextX ,Y1+plset.treetextY,ansitoutf8(searchtrack.Name),textstyle);
+               SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[getindexicon('foldertree.jpg')].width+plset.treetextX ,Y1+plset.treetextY,UTF8Encode(searchtrack.Name),textstyle);
                folders[i,1]:=disk+'\'+searchtrack.Name;
                folders[i,2]:='folder';
                folders[i,3]:=inttostr(X1);
@@ -7260,7 +7263,7 @@ begin
                        if indexmass>0 then for n:=1 to indexmass do
                          begin
                           if n=1 then sm:=0 else sm:=SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
-                          SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[getindexicon('musicfile.jpg')].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), ansitoutf8(mass[n]));
+                          SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[getindexicon('musicfile.jpg')].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), UTF8Encode(mass[n]));
                          end;
                         folders[i,1]:=disk+'\'+searchtrack.Name;
                         folders[i,2]:='files';
@@ -7279,7 +7282,7 @@ begin
                            inc(kolfilefolder);
 
                            if marked=0 then SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('musicfiletree.jpg')]) else SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('musicfiletreemarked.jpg')]);
-                           SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[getindexicon('musicfiletree.jpg')].width+plset.treetextX ,Y1+plset.treetextY,ansitoutf8(searchtrack.Name),textstyle);
+                           SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[getindexicon('musicfiletree.jpg')].width+plset.treetextX ,Y1+plset.treetextY,UTF8Encode(searchtrack.Name),textstyle);
                            folders[i,1]:=disk+'\'+searchtrack.Name;
                            folders[i,2]:='files';
                            folders[i,3]:=inttostr(X1);
@@ -8187,9 +8190,10 @@ begin
       end;
       if singleplayersettings.readtags=1 then
        begin
-        thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
-        thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
-        thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
+        thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
+        thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
+        thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
+        //thisTagv2.ReadFromFile(curenttrack);
        end;
       end else
       begin
@@ -8695,7 +8699,7 @@ begin
     coverloaded:=1;
   end else
   begin
-   coverfolder:='\'+ExtractFilepath(ansitoutf8(curenttrack));
+   coverfolder:='\'+ExtractFilepath(UTF8Encode(curenttrack));
    if fileexists(utf8toansi(coverfolder+'cover.jpg')) then begin coverimg.LoadFromFile(coverfolder+'cover.jpg');   coverloaded:=1; end else
     begin
      coverimg.SetSize(0, 0);
@@ -9011,7 +9015,7 @@ if SinglePlayerSettings.kolltrack<>0 then
   for i:=nachpls to konpls do
     begin
      SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,inttostr(i),1),Ystr,inttostr(i));
-     SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),textstyle );
+     SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),textstyle );
      plstrackcor[i,1]:=plset.noticonpoleleft;
      plstrackcor[i,2]:=Ystr-(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
      plstrackcor[i,3]:=plset.noticonpolerigth;
@@ -9049,7 +9053,7 @@ if SinglePlayerSettings.kolltrack<>0 then
        SinglePlayerGUI.Canvas.Brush.Color:=plset.vidplcolor;   {проигрываемый}
        SinglePlayerGUI.Canvas.rectangle(classes.Rect(plset.vidpltrackleft,Ystr+plset.vidpltracktop,plset.vidpltrackwidth,Ystr+plset.vidpltrackheight+plset.vidpltracktop));
        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,inttostr(i),1),Ystr,inttostr(i));
-       SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),textstyle );
+       SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),textstyle );
        plstrackcor[i,1]:=plset.noticonpoleleft;
        plstrackcor[i,2]:=Ystr-(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
        plstrackcor[i,3]:=plset.noticonpolerigth;
@@ -9107,7 +9111,7 @@ if SinglePlayerSettings.kolltrack<>0 then
         SinglePlayerGUI.Canvas.Brush.Color:=plset.vidcolor;    {выбранный}
         SinglePlayerGUI.Canvas.rectangle(classes.Rect(plset.vidtrackleft,Ystr+plset.vidtracktop,plset.vidtrackwidth,Ystr+plset.vidtrackheight+plset.vidtracktop));
         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,inttostr(i),1),Ystr,inttostr(i));
-        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt( ansitoutf8(track[i]),'')),textstyle );
+        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt( UTF8Encode(track[i]),'')),textstyle );
         plstrackcor[i,1]:=plset.noticonpoleleft;
         plstrackcor[i,2]:=Ystr-(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
         plstrackcor[i,3]:=plset.noticonpolerigth;
@@ -9425,7 +9429,7 @@ SinglePlayerGUI.Canvas.Font.Color:=plset.curentdirplcolor;
 SinglePlayerGUI.Canvas.Font.Size:=plset.curentdirplsize;
 if fileexists(curenttrack) then
  begin
-  curpldir:=ExtractFilepath(ansitoutf8(curenttrack));
+  curpldir:=ExtractFilepath(UTF8Encode(curenttrack));
   if curpldir[length(curpldir)]='\' then delete(curpldir,length(curpldir),1);
   curpldir:=ExtractFileName(curpldir);
  end;
@@ -9436,13 +9440,13 @@ begin
 
  SinglePlayerGUI.Canvas.Font.Color:=plset.tracktitlecolor;
  SinglePlayerGUI.Canvas.Font.Size:=plset.tracktitlesize;
- if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,ansitoutf8(artisttitle),TextStyle) else
- SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,ansitoutf8(artisttitle));
+ if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,UTF8Encode(artisttitle),TextStyle) else
+ SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,UTF8Encode(artisttitle));
 
  if SinglePlayerSettings.track2str=1 then
   begin
-   if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,ansitoutf8(scrolltitlestr),TextStyle) else
-   SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,ansitoutf8(scrolltitlestr));
+   if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,UTF8Encode(scrolltitlestr),TextStyle) else
+   SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,UTF8Encode(scrolltitlestr));
   end;
 
 end;
@@ -10389,7 +10393,7 @@ begin
  thisTagv2.Clear;
  if ((length(track)-pos('.flac',track)=4) and (pos('.flac',track)<>0)) or ((length(track)-pos('.m4a',track)=3) and (pos('.m4a',track)<>0)) then exit else thisTagv2.ReadFromFile(track);
  if (thisTagv2.Title='') and (thisTagv2.artist='') then exit;
- result:=thisTagv2.Artist+' - '+thisTagv2.Title;
+ result:=UTF8Encode(thisTagv2.Artist)+' - '+UTF8Encode(thisTagv2.Title);
 end;
 
 procedure formtagmass(mode:byte);
