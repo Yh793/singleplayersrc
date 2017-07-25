@@ -21,6 +21,7 @@ interface
 uses
   Windows;
 {$ENDIF}
+uses lcltype;
 
 const
   BASSVERSION = $204;             // API version
@@ -822,7 +823,7 @@ function BASS_SampleStop(handle: HSAMPLE): BOOL; {$IFDEF MSWINDOWS}stdcall{$ELSE
 
 function BASS_StreamCreate(freq, chans, flags: DWORD; proc: STREAMPROC; user: Pointer): HSTREAM; {$IFDEF MSWINDOWS}stdcall{$ELSE}cdecl{$ENDIF}; external bassdll;
 function BASS_StreamCreateFile(mem: BOOL; f: Pointer; offset, length: QWORD; flags: DWORD): HSTREAM; {$IFDEF MSWINDOWS}stdcall{$ELSE}cdecl{$ENDIF}; external bassdll;
-function BASS_StreamCreateURL(url: PChar; offset: DWORD; flags: DWORD; proc: DOWNLOADPROC; user: Pointer):HSTREAM; {$IFDEF MSWINDOWS}stdcall{$ELSE}cdecl{$ENDIF}; external bassdll;
+function BASS_StreamCreateURL(url: pChar; offset: DWORD; flags: DWORD; proc: DOWNLOADPROC; user: Pointer):HSTREAM; {$IFDEF MSWINDOWS}stdcall{$ELSE}cdecl{$ENDIF}; external bassdll;
 function BASS_StreamCreateFileUser(system, flags: DWORD; var procs: BASS_FILEPROCS; user: Pointer): HSTREAM; {$IFDEF MSWINDOWS}stdcall{$ELSE}cdecl{$ENDIF}; external bassdll;
 function BASS_StreamFree(handle: HSTREAM): BOOL; {$IFDEF MSWINDOWS}stdcall{$ELSE}cdecl{$ENDIF}; external bassdll;
 function BASS_StreamGetFilePosition(handle: HSTREAM; mode: DWORD): QWORD; {$IFDEF MSWINDOWS}stdcall{$ELSE}cdecl{$ENDIF}; external bassdll;

@@ -1,9 +1,3 @@
-{
-Author of the code: alex208210.
-SinglePlayer code is distributed under Mozilla Public Licence, which means, in short, that it is free for both freeware and commercial use.You can use it in products with closed or open-source freely. The only requirements are:
-1) Acknowledge SinglePlayer code is used somewhere in your application (in an about box, credits page or printed manual, etc. with at least a link to http://singleplayer.coddism.com/)
-2) Modifications made to SinglePlayer code must be made public (no need to publish the full code, only to state which parts were altered, and how), but feel welcome to open-source your code if you so wish.
-}
 program SinglePlayerMain;
 
 {$mode delphi}{$H+}
@@ -34,12 +28,14 @@ begin
   EnumWindows (@EnumProc, 1);
   if (CheckTask('explorer.exe')<>0) then killtask('explorer.exe');
   MMCCore.Refresh;
-  if fileexists(ExtractFilePath(ParamStr(0))+'logo.jpg') then
+  if fileexists(ExtractFilePath(ParamStr(0))+'logo.bmp') then
    begin
-    logoicon:= TJPEGImage.Create;
+    logoicon:= graphics.tbitmap.Create;
+    logoiconP:=Tpicture.Create;
     logoicon.Width  := 800;
     logoicon.Height := 480;
-    logoicon.LoadFromFile(ExtractFilePath(ParamStr(0))+'logo.jpg');
+    logoicon.Handle:=LoadBMP(ExtractFilePath(ParamStr(0))+'logo.bmp');
+    logoiconP.Bitmap:=logoicon;
    end;
   Application.CreateForm(TLoadingGUI, LoadingGUI);
   LoadingGUI.Show;

@@ -1,12 +1,7 @@
-{
-Author of the code: alex208210.
-SinglePlayer code is distributed under Mozilla Public Licence, which means, in short, that it is free for both freeware and commercial use.You can use it in products with closed or open-source freely. The only requirements are:
-1) Acknowledge SinglePlayer code is used somewhere in your application (in an about box, credits page or printed manual, etc. with at least a link to http://singleplayer.coddism.com/)
-2) Modifications made to SinglePlayer code must be made public (no need to publish the full code, only to state which parts were altered, and how), but feel welcome to open-source your code if you so wish.
-}
 unit SinglePlayer;
 
 {$mode objfpc}{$H+}
+
 
 {$DEFINE SP_STANDALONE}
 
@@ -14,8 +9,8 @@ interface
 
 uses
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, windows,
-  inifiles, strutils, ExtCtrls, StdCtrls, bass, bassflac, BASS_FX,bass_aac,bassalac, Mp3FileUtils,
-  ID3v2Frames, tags, contnrs, Core, loading, MMSystem;
+  inifiles, strutils, ExtCtrls, StdCtrls, bass, bassflac, BASS_FX,bass_aac,bassalac,bass_mpc,Mp3FileUtils,
+  ID3v2Frames, tags, contnrs, Core, loading, MMSystem{$IFDEF SP_STANDALONE}, Tlhelp32{$ENDIF};
 
 const
   kolleff=30;     //максимальное количество полос + эффектов эквалайзера
@@ -522,6 +517,7 @@ type
  procedure Execute; override;
 end;
 
+
  type
  connectradiop = class(TThread)
  radiourlp:string;
@@ -588,8 +584,6 @@ procedure itelmastop; //остановить проигрывание трека
 procedure itelmaplay(musictrack:string); //проиграть трек
 procedure iradioplay(radiourl:string);   //проиграть url
 procedure gettree(disk:string; nfindex:integer); //отобразить дерево каталогов и файлов
-function strInArray(value:string) : Boolean;
-procedure createTreeObjects(disk:string; bufName:string; index:integer; marked:integer); // создание объектов дерева (папок и файлов)
 procedure saveeq; //сохраняем значения эквалайзера для всех пресетов
 procedure exptree;    //отображать файлы и папки в виде списка
 procedure expsetka;   //отображать файлы и папки в виде сетки
@@ -686,11 +680,17 @@ procedure RadioStreamDisconnected;
 procedure playm3upls(m3uplsstr:string);
 procedure loadlang;
 function getfromlangpack(langtext:string):string;
+procedure SinglePlay;
+{$IFDEF SP_STANDALONE}
+procedure checkexplorer;
+function CheckTask (ExeFileName: string): Integer;
+function LoadBMP(Path: String): HBITMAP;
+{$ENDIF}
+
 
 var
   SinglePlayerGUI: TSinglePlayerGUI;
   TextStyle: TTextStyle;
-  //updating:integer;
   curentpage,SinglePlayerDir,curenttrack,curworkusb,playerversion,napr,curworktrack,oldpage,curentradio,curentdir,cpuinfo,artist,title,bitratestr,tstr,timetrack,
   strpos,curpldir,strcureq,strkolcurtr,curvol,scrolltitle,artisttitle,curworkskin,skinname,skinauthor,skinversion,timeinicon,scrolltitlestr,scrolltitle2,
   dateinicon,scanningstr,tracksearchstr,playerversionstr,effectstr,radioimage,conradiostr:string;
@@ -698,10 +698,9 @@ var
   plset:playerskinsettings;               //переменные скина плеера
   seticons: array [1..allicons] of typeicons; //переменные настроек иконки скина
   flashword: array of array of string; //массив слов языкового пакета
-  playericon,clickplayericon: array [1..allicons] of TJPEGImage;       //поле под иконку
-  PlayerSettingsINI,skinsettings:Tinifile;
+  playericon,clickplayericon: array [1..allicons] of graphics.TBitmap;
   AllowStartPlayer,msgtap,playlistadd,startnextbut,schetperemotka,stopspeed,prblock,clicknext,clickprev,loadiconkl,plsett,playadded,
-  errorplay,coverloaded,saveeqkl,genreb,sk,powerup,mousestate,getkollpagekey,kolfilefolder,enumworked,keyboardmode,nextplayplsshow,kollraskl,lastpls,itfolder,
+  errorplay,coverloaded,radiocoverloaded,saveeqkl,genreb,sk,powerup,mousestate,getkollpagekey,kolfilefolder,enumworked,keyboardmode,nextplayplsshow,kollraskl,lastpls,itfolder,
   wait,tempfreq,fileispls,findl:byte;
   genremass: array [1..100,1..kolleff+1] of string;
   bannermass: array [1..kollbanner] of string;
@@ -755,8 +754,7 @@ var
   tagm:^TAG_ID3;
   thisTagV2: TID3v2Tag;
   PictureFrames: TObjectList;
-  coverimg,coverimgot,prewskin: TJPEGImage;
-  coverimgPNG,coverimgotPNG: TPortableNetworkGraphic;
+  coverimg,coverimgot: TJPEGImage;
   PI: TProcessInformation;
   fx: array[1..13] of integer;
   TrackPos,ValPos: double;
@@ -765,7 +763,7 @@ var
   chinfo: BASS_CHANNELINFO;
   Progress:DWORD;
   lastradiourl:string;
-
+  prewskin,coverimgRadio,coverimgotRadio:graphics.TBitmap;
   Channel,RadioChannel,fxbqflow,fxbqfhigh,fxbqfPEAKINGEQ,fxbqfBANDPASS,fxreverb,fxecho,fxchorus,fxflanger,fxcompressor,fxdistortion,fxphaser,fxFREEVERB,fxautowah,fxbqfnotch: DWORD;
   bqflowparam,bqfhighparam,bqfPEAKINGEQparam,bqfBANDPASSparam,bqfnotchparam:BASS_BFX_BQF;
   reverbparam:BASS_DX8_REVERB;
@@ -778,6 +776,9 @@ var
   flangerparam:BASS_DX8_flanger;
   distortionparam:BASS_DX8_distortion;
   p: array [1..13] of BASS_DX8_PARAMEQ;
+  SkinSettingsIniMas:array of String;
+  SP_SettIniMas: TIniMas;
+  SP_SkinIniMas: array[0..allicons] of TIniMas;
 
 implementation
 
@@ -796,7 +797,7 @@ begin
  {$IFDEF WInCE}
  SinglePlayerGUI.Cursor:=crnone;     //убираем курсор с формы плеера
  {$ENDIF}
- SinglePlayerGUI.DoubleBuffered:=true;   //включаем двойную буфферизацию для плавного отображения картинок
+ SinglePlayerGUI.DoubleBuffered:=true;  //включаем двойную буфферизацию для плавного отображения картинок
  SinglePlayerGUI.KeyPreview:=true;   //включает ловушку нажатий клавиш
  SinglePlayerGUI.Invalidate;   //перерисовываем форму
  SinglePlayerGUI.Color:=$FFFFFF; //задаем цвет формы
@@ -820,7 +821,6 @@ begin
  LoadingGUI.LabelText.Caption:=getfromlangpack('loadicons');
  LoadingGUI.LabelText.Refresh;
  LoadIconPlayer; //загружаем иконки плеера
-
 end;
 
 procedure TSinglePlayerGUI.FormShow(Sender: TObject);    //показать окно плеера
@@ -829,7 +829,79 @@ begin
   begin
    if mode=closed then SinglePlayerStart;
   end;
+ { {$IFDEF SP_STANDALONE}
+  setforegroundwindow(SinglePlayerGUI.Handle);
+  BringWindowToTop(SinglePlayerGUI.Handle);
+  SetWindowPos(SinglePlayerGUI.Handle,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE+SWP_NOSIZE);
+  SinglePlayerGUI.SetFocus;
+  {$endif}   }
+  senderstr('show');
 end;
+
+procedure LoadSP_SkinIniMas(Path: String);
+var F: Text;
+    CounterG, CounterL, Index: Integer;
+    S, S1: String;
+    SubMas, NoRead: Boolean;
+begin
+  try
+    SubMas:=False;
+    NoRead:=False;
+    AssignFile(F,Path);
+    Reset(F);
+    CounterG:=0;
+    index:=0;
+    CounterL:=0;
+    while not EOF(F) do
+    begin
+      if SubMas then
+      begin
+        Inc(CounterL);
+        SetLength(SP_SkinIniMas[Index],CounterL);
+        ReadLn(F,S);
+        if Length(S)>0 then
+        begin
+          if (S[1]<>'[') then SP_SkinIniMas[Index][CounterL-1]:=S
+          else
+          begin
+            SubMas:=False;
+            NoRead:=True;
+          end;
+        end;
+      end;
+      if not SubMas then
+      begin
+        if not NoRead then
+        begin
+          Inc(CounterG);
+          SetLength(SP_SkinIniMas[0],CounterG+1);
+          ReadLn(F,S);
+        end;
+        NoRead:=False;
+        if (Pos(';',S)=1) then
+        begin
+          Dec(CounterG);
+          Continue;
+        end;
+        if (Pos('[icon',S)=0) then SP_SkinIniMas[0][CounterG-1]:=S
+        else
+        begin
+          S1:=S;
+          Delete(S1,1,5);
+          Delete(S1,Length(S1),1);
+          Index:=StrToInt(S1);
+          CounterL:=1;
+          SetLength(SP_SkinIniMas[Index],CounterL+1);
+          SP_SkinIniMas[Index][0]:=S;
+          SubMas:=True;
+        end;
+      end;
+    end;
+    CloseFile(F);
+  except
+  end;
+end;
+
 
 procedure setinitbass;
 begin
@@ -849,9 +921,11 @@ begin
    BASS_PluginLoad ('bass_fx.dll', 0);
    BASS_PluginLoad ('tags.dll', 0);
    BASS_PluginLoad ('bassalac.dll', 0);
+   BASS_PluginLoad ('bass_mpc.dll', 0);
 end;
 
 procedure SinglePlayerStart;
+
 begin
  {инициализация плеера}
  SinglePlayerGUI.PolSecondTimer.Enabled:=true;
@@ -862,17 +936,19 @@ begin
  coverimgot := TJPEGImage.Create;
  coverimgot.Width:=0;
  coverimgot.Height:=0;
- coverimgPNG := TPortableNetworkGraphic.Create;
- coverimgPNG.Width:=0;
- coverimgPNG.Height:=0;
- coverimgotPNG := TPortableNetworkGraphic.Create;
- coverimgotPNG.Width:=0;
- coverimgotPNG.Height:=0;
+ coverimgRadio := graphics.tbitmap.Create;
+ coverimgRadio.Width:=0;
+ coverimgRadio.Height:=0;
+ coverimgotRadio := graphics.tbitmap.Create;
+ coverimgotRadio.Width:=0;
+ coverimgotRadio.Height:=0;
  randomize;
  setinitbass;
  mode:=Started;
  if SinglePlayerSettings.startautoplay=1 then singlestopplay;
  SinglePlayerGUI.PlayerTimer.Enabled:=true;
+
+
 
 end;
 
@@ -887,13 +963,8 @@ Procedure SetBeginPlayer;     //установка начальных значе
 begin
  curentpage:='singleplayer';  //текущая страница для отрисовки на форме
  oldpage:='singleplayer';
- playerversion:='2.8.2';
+ playerversion:='2.8.3'; {with mpc}
  SinglePlayerDir:=ExtractFilePath(ParamStr(0))+'SinglePlayer\';    //каталог с плеером
- PlayerSettingsINI := TINIFile.Create(SinglePlayerDir+'playersettings.ini');   //заводим ini переменную для хранения настроек плеера
- PlayerSettingsINI.CacheUpdates:=True;
- prewskin:= TJPEGImage.Create;
- prewskin.Width  := 400;
- prewskin.Height := 240;
  AllowStartPlayer:=1;      //ключ отвечающий за возможность запуска плеера. 0 - запрещено, 1 - разрешено
  statusplaylist:=0; // разрешаем операции с плейлистами
  curenttrack:='';  // очищаем переменную проигрываемого трека
@@ -943,6 +1014,7 @@ begin
  msgaddflashstrrgY:=-1;
  msgskinchangeleftX:=-1;
  coverloaded:=0;
+ radiocoverloaded:=0;
  progresscor[1,1]:=0;
  SetLength(folders,10,7);
  tempallkolltrack:=0;
@@ -1021,6 +1093,8 @@ SinglePlayerGUI.scrollTimer.OnTimer:=@SinglePlayerGUI.scrollTimerTimer;
 TextStyle.Clipping:=True;
 TextStyle.Wordbreak:=False;
 TextStyle.EndEllipsis:=True;
+
+
 end;
 
 Procedure LoadPlayerSettings;    //считываем настройки плеера
@@ -1031,88 +1105,86 @@ var
   searchskin  : TSearchRec;
 begin
 {--------------------- читаем настройки плеера --------------------------------}
-  if fileexists(SinglePlayerDir+'playersettings.ini') then
-   begin
-    SinglePlayerSettings.skin:=PlayerSettingsINI.ReadString('SinglePlayer','skin','default');
-    SinglePlayerSettings.skindir:=PlayerSettingsINI.ReadString('SinglePlayer','skindir','Skins\');
-    SinglePlayerSettings.favoritfolder:=PlayerSettingsINI.ReadString('SinglePlayer','favoritfolder','');
-    SinglePlayerSettings.curentgenre:=PlayerSettingsINI.ReadInteger('SinglePlayer','curentgenre',1);
+    LoadIni(SinglePlayerDir+'playersettings.ini',SP_SettIniMas);   //заводим ini переменную для хранения настроек плеера
+    SinglePlayerSettings.skin:=IniReadString(SP_SettIniMas,'SinglePlayer','skin','default');
+    SinglePlayerSettings.skindir:=IniReadString(SP_SettIniMas,'SinglePlayer','skindir','Skins\');
+    SinglePlayerSettings.favoritfolder:=IniReadString(SP_SettIniMas,'SinglePlayer','favoritfolder','');
+    SinglePlayerSettings.curentgenre:=IniReadInteger(SP_SettIniMas,'SinglePlayer','curentgenre',1);
     curentgenre:=SinglePlayerSettings.curentgenre;
-    SinglePlayerSettings.curentplaylist:=PlayerSettingsINI.Readinteger('SinglePlayer','curentplaylist',1);
-    SinglePlayerSettings.kolltrack:=PlayerSettingsINI.Readinteger('SinglePlayer','kolltrack',0);
-    SinglePlayerSettings.playedtrack:=PlayerSettingsINI.Readinteger('SinglePlayer','playedtrack',1);
-    SinglePlayerSettings.logmode:=PlayerSettingsINI.Readinteger('SinglePlayer','logmode',0);
-    SinglePlayerSettings.shufflekey:=PlayerSettingsINI.Readinteger('SinglePlayer','shufflekey',0);
-    SinglePlayerSettings.timerrevkey:=PlayerSettingsINI.Readinteger('SinglePlayer','timerrevkey',0);
-    SinglePlayerSettings.curentvol:=PlayerSettingsINI.Readfloat('SinglePlayer','curentvol',10);
-    SinglePlayerSettings.sorttrue:=PlayerSettingsINI.Readinteger('SinglePlayer','sorttrue',0);
-    SinglePlayerSettings.showcpu:=PlayerSettingsINI.Readinteger('SinglePlayer','showcpu',0);
-    SinglePlayerSettings.savepos:=PlayerSettingsINI.Readinteger('SinglePlayer','savepos',0);
-    SinglePlayerSettings.curpos:=PlayerSettingsINI.Readinteger('SinglePlayer','curpos',-1);
-    SinglePlayerSettings.playone:=PlayerSettingsINI.Readinteger('SinglePlayer','playone',0);
-    SinglePlayerSettings.ciclepls:=PlayerSettingsINI.Readinteger('SinglePlayer','ciclepls',0);
-    SinglePlayerSettings.repaintplayergui:=PlayerSettingsINI.Readinteger('SinglePlayer','repaintplayergui',0);
-    SinglePlayerSettings.kolltrackbuf:=PlayerSettingsINI.Readinteger('SinglePlayer','kolltrackbuf',0);
-    SinglePlayerSettings.showcoverpl:=PlayerSettingsINI.Readinteger('SinglePlayer','showcoverpl',0);
-    SinglePlayerSettings.eqon:=PlayerSettingsINI.Readinteger('SinglePlayer','eqon',0);
-    SinglePlayerSettings.playfromgenre:=PlayerSettingsINI.Readinteger('SinglePlayer','playfromgenre',0);
-    SinglePlayerSettings.recadd:=PlayerSettingsINI.Readinteger('SinglePlayer','recadd',0);
-    SinglePlayerSettings.perfeqexit:=PlayerSettingsINI.Readinteger('SinglePlayer','perfeqexit',0);
-    SinglePlayerSettings.znachcpueq:=PlayerSettingsINI.Readinteger('SinglePlayer','znachcpueq',0);
-    SinglePlayerSettings.znachcpueqmin:=PlayerSettingsINI.Readinteger('SinglePlayer','znachcpueqmin',0);
-    SinglePlayerSettings.perfeqon:=PlayerSettingsINI.Readinteger('SinglePlayer','perfeqon',0);
-    SinglePlayerSettings.recone:=PlayerSettingsINI.Readinteger('SinglePlayer','recone',0);
-    SinglePlayerSettings.plavzvuk:=PlayerSettingsINI.Readinteger('SinglePlayer','plavzvuk',0);
-    SinglePlayerSettings.backzero:=PlayerSettingsINI.Readinteger('SinglePlayer','backzero',0);
-    SinglePlayerSettings.startautoplay:=PlayerSettingsINI.Readinteger('SinglePlayer','startautoplay',0);
-    SinglePlayerSettings.eqsetnow:=PlayerSettingsINI.Readinteger('SinglePlayer','eqsetnow',0);
-    SinglePlayerSettings.peremotka:=PlayerSettingsINI.Readinteger('SinglePlayer','peremotka',0);
-    SinglePlayerSettings.mute:=PlayerSettingsINI.Readinteger('SinglePlayer','mute',0);
-    SinglePlayerSettings.scrollsmalltrack:=PlayerSettingsINI.Readinteger('SinglePlayer','scrollsmalltrack',0);
-    SinglePlayerSettings.scrolltrack:=PlayerSettingsINI.Readinteger('SinglePlayer','scrolltrack',0);
-    SinglePlayerSettings.removebanner:=PlayerSettingsINI.Readinteger('SinglePlayer','removebanner',0);
-    SinglePlayerSettings.folderadd:=PlayerSettingsINI.Readinteger('SinglePlayer','folderadd',0);
-    SinglePlayerSettings.tracknomkol:=PlayerSettingsINI.Readinteger('SinglePlayer','playttracknomkolempo',0);
-    SinglePlayerSettings.autousb:=PlayerSettingsINI.Readinteger('SinglePlayer','autousb',0);
-    SinglePlayerSettings.activatemode:=PlayerSettingsINI.Readinteger('SinglePlayer','activatemode',0);
-    SinglePlayerSettings.vizon:=PlayerSettingsINI.Readinteger('SinglePlayer','vizon',0);
-    SinglePlayerSettings.vizintensivitu:=PlayerSettingsINI.Readinteger('SinglePlayer','vizintensivitu',500);
-    SinglePlayerSettings.track2str:=PlayerSettingsINI.Readinteger('SinglePlayer','track2str',0);
-    SinglePlayerSettings.wheelone:=PlayerSettingsINI.Readinteger('SinglePlayer','wheelone',0);
-    SinglePlayerSettings.swipeon:=PlayerSettingsINI.Readinteger('SinglePlayer','swipeon',0);
-    SinglePlayerSettings.manyadd:=PlayerSettingsINI.Readinteger('SinglePlayer','manyadd',0);
-    SinglePlayerSettings.playaftchangepls:=PlayerSettingsINI.Readinteger('SinglePlayer','playaftchangepls',0);
-    SinglePlayerSettings.SwipeAmount:=PlayerSettingsINI.Readinteger('SinglePlayer','SwipeAmount',2);
-    SinglePlayerSettings.changevizint:=PlayerSettingsINI.Readinteger('SinglePlayer','changevizint',0);
-    SinglePlayerSettings.changenetbuffer:=PlayerSettingsINI.Readinteger('SinglePlayer','changenetbuffer',0);
-    SinglePlayerSettings.floatdsp:=PlayerSettingsINI.Readinteger('SinglePlayer','floatdsp',1);
-    SinglePlayerSettings.netagent:=PlayerSettingsINI.ReadString('SinglePlayer','netagent','SinglePlayer '+playerversion);
-    SinglePlayerSettings.playerfreq:=PlayerSettingsINI.Readinteger('SinglePlayer','playerfreq',8);
-    SinglePlayerSettings.inallpls:=PlayerSettingsINI.Readinteger('SinglePlayer','inallpls',0);
-    SinglePlayerSettings.closeaftadd:=PlayerSettingsINI.Readinteger('SinglePlayer','closeaftadd',0);
-    SinglePlayerSettings.searchintag:=PlayerSettingsINI.Readinteger('SinglePlayer','searchintag',0);
-    SinglePlayerSettings.altmenu:=PlayerSettingsINI.ReadString('SinglePlayer','altmenu','');
-    SinglePlayerSettings.sortingallpls:=PlayerSettingsINI.ReadInteger('SinglePlayer','sortingallpls',0);
-    SinglePlayerSettings.sysvolchange:=PlayerSettingsINI.ReadInteger('SinglePlayer','sysvolchange',0);
-    SinglePlayerSettings.curentsysvol:=PlayerSettingsINI.ReadInteger('SinglePlayer','curentsysvol',100);
-    SinglePlayerSettings.playallpls:=PlayerSettingsINI.ReadInteger('SinglePlayer','playallpls',0);
-    SinglePlayerSettings.readtags:=PlayerSettingsINI.ReadInteger('SinglePlayer','readtags',1);
-    SinglePlayerSettings.netbuffer:=PlayerSettingsINI.Readinteger('SinglePlayer','netbuffer',10000);       {1..**}
-    SinglePlayerSettings.netprebuffer:=PlayerSettingsINI.ReadInteger('SinglePlayer','netprebuffer',75);   {1..100}
-    SinglePlayerSettings.nettimeout:=PlayerSettingsINI.ReadInteger('SinglePlayer','nettimeout',10000);     {1..**}
-    SinglePlayerSettings.netreadtimeout:=PlayerSettingsINI.ReadInteger('SinglePlayer','netreadtimeout',0); {1..**}
-    SinglePlayerSettings.playerbuffer:=PlayerSettingsINI.ReadInteger('SinglePlayer','playerbuffer',200);    {10..5000}
-    SinglePlayerSettings.playupdateperiod:=PlayerSettingsINI.ReadInteger('SinglePlayer','playupdateperiod',100); {5..100}
-    SinglePlayerSettings.changenetprebuffer:=PlayerSettingsINI.ReadInteger('SinglePlayer','changenetprebuffer',0);
-    SinglePlayerSettings.changenettimeout:=PlayerSettingsINI.ReadInteger('SinglePlayer','changenettimeout',0);
-    SinglePlayerSettings.changenetreadtimeout:=PlayerSettingsINI.ReadInteger('SinglePlayer','changenetreadtimeout',0);
-    SinglePlayerSettings.changeplayerbuffer:=PlayerSettingsINI.ReadInteger('SinglePlayer','changeplayerbuffer',0);
-    SinglePlayerSettings.changeplayupdateperiod:=PlayerSettingsINI.ReadInteger('SinglePlayer','changeplayupdateperiod',0);
-    SinglePlayerSettings.changeplayerfreq:=PlayerSettingsINI.ReadInteger('SinglePlayer','changeplayerfreq',0);
-    SinglePlayerSettings.nomlang:=PlayerSettingsINI.ReadInteger('SinglePlayer','nomlang',1);
-    SinglePlayerSettings.changelang:=PlayerSettingsINI.ReadInteger('SinglePlayer','changelang',0);
-    curentdir:=PlayerSettingsINI.ReadString('SinglePlayer','curentdir','');
-    if singleplayersettings.startautoplay=1 then SinglePlayerSettings.lasturl:=PlayerSettingsINI.Readstring('SinglePlayer','lasturl','') else SinglePlayerSettings.lasturl:='';
+    SinglePlayerSettings.curentplaylist:=IniReadInteger(SP_SettIniMas,'SinglePlayer','curentplaylist',1);
+    SinglePlayerSettings.kolltrack:=IniReadInteger(SP_SettIniMas,'SinglePlayer','kolltrack',0);
+    SinglePlayerSettings.playedtrack:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playedtrack',1);
+    SinglePlayerSettings.logmode:=IniReadInteger(SP_SettIniMas,'SinglePlayer','logmode',0);
+    SinglePlayerSettings.shufflekey:=IniReadInteger(SP_SettIniMas,'SinglePlayer','shufflekey',0);
+    SinglePlayerSettings.timerrevkey:=IniReadInteger(SP_SettIniMas,'SinglePlayer','timerrevkey',0);
+    SinglePlayerSettings.curentvol:=IniReadInteger(SP_SettIniMas,'SinglePlayer','curentvol',10);
+    SinglePlayerSettings.sorttrue:=IniReadInteger(SP_SettIniMas,'SinglePlayer','sorttrue',0);
+    SinglePlayerSettings.showcpu:=IniReadInteger(SP_SettIniMas,'SinglePlayer','showcpu',0);
+    SinglePlayerSettings.savepos:=IniReadInteger(SP_SettIniMas,'SinglePlayer','savepos',1);
+    SinglePlayerSettings.curpos:=IniReadInteger(SP_SettIniMas,'SinglePlayer','curpos',-1);
+    SinglePlayerSettings.playone:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playone',0);
+    SinglePlayerSettings.ciclepls:=IniReadInteger(SP_SettIniMas,'SinglePlayer','ciclepls',0);
+    SinglePlayerSettings.repaintplayergui:=IniReadInteger(SP_SettIniMas,'SinglePlayer','repaintplayergui',0);
+    SinglePlayerSettings.kolltrackbuf:=IniReadInteger(SP_SettIniMas,'SinglePlayer','kolltrackbuf',0);
+    SinglePlayerSettings.showcoverpl:=IniReadInteger(SP_SettIniMas,'SinglePlayer','showcoverpl',1);
+    SinglePlayerSettings.eqon:=IniReadInteger(SP_SettIniMas,'SinglePlayer','eqon',0);
+    SinglePlayerSettings.playfromgenre:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playfromgenre',0);
+    SinglePlayerSettings.recadd:=IniReadInteger(SP_SettIniMas,'SinglePlayer','recadd',0);
+    SinglePlayerSettings.perfeqexit:=IniReadInteger(SP_SettIniMas,'SinglePlayer','perfeqexit',0);
+    SinglePlayerSettings.znachcpueq:=IniReadInteger(SP_SettIniMas,'SinglePlayer','znachcpueq',0);
+    SinglePlayerSettings.znachcpueqmin:=IniReadInteger(SP_SettIniMas,'SinglePlayer','znachcpueqmin',0);
+    SinglePlayerSettings.perfeqon:=IniReadInteger(SP_SettIniMas,'SinglePlayer','perfeqon',0);
+    SinglePlayerSettings.recone:=IniReadInteger(SP_SettIniMas,'SinglePlayer','recone',0);
+    SinglePlayerSettings.plavzvuk:=IniReadInteger(SP_SettIniMas,'SinglePlayer','plavzvuk',1);
+    SinglePlayerSettings.backzero:=IniReadInteger(SP_SettIniMas,'SinglePlayer','backzero',0);
+    SinglePlayerSettings.startautoplay:=IniReadInteger(SP_SettIniMas,'SinglePlayer','startautoplay',0);
+    SinglePlayerSettings.eqsetnow:=IniReadInteger(SP_SettIniMas,'SinglePlayer','eqsetnow',0);
+    SinglePlayerSettings.peremotka:=IniReadInteger(SP_SettIniMas,'SinglePlayer','peremotka',0);
+    SinglePlayerSettings.mute:=IniReadInteger(SP_SettIniMas,'SinglePlayer','mute',0);
+    SinglePlayerSettings.scrollsmalltrack:=IniReadInteger(SP_SettIniMas,'SinglePlayer','scrollsmalltrack',0);
+    SinglePlayerSettings.scrolltrack:=IniReadInteger(SP_SettIniMas,'SinglePlayer','scrolltrack',0);
+    SinglePlayerSettings.removebanner:=IniReadInteger(SP_SettIniMas,'SinglePlayer','removebanner',0);
+    SinglePlayerSettings.folderadd:=IniReadInteger(SP_SettIniMas,'SinglePlayer','folderadd',0);
+    SinglePlayerSettings.tracknomkol:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playttracknomkolempo',0);
+    SinglePlayerSettings.autousb:=IniReadInteger(SP_SettIniMas,'SinglePlayer','autousb',0);
+    SinglePlayerSettings.activatemode:=IniReadInteger(SP_SettIniMas,'SinglePlayer','activatemode',0);
+    SinglePlayerSettings.vizon:=IniReadInteger(SP_SettIniMas,'SinglePlayer','vizon',0);
+    SinglePlayerSettings.vizintensivitu:=IniReadInteger(SP_SettIniMas,'SinglePlayer','vizintensivitu',500);
+    SinglePlayerSettings.track2str:=IniReadInteger(SP_SettIniMas,'SinglePlayer','track2str',1);
+    SinglePlayerSettings.wheelone:=IniReadInteger(SP_SettIniMas,'SinglePlayer','wheelone',0);
+    SinglePlayerSettings.swipeon:=IniReadInteger(SP_SettIniMas,'SinglePlayer','swipeon',0);
+    SinglePlayerSettings.manyadd:=IniReadInteger(SP_SettIniMas,'SinglePlayer','manyadd',0);
+    SinglePlayerSettings.playaftchangepls:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playaftchangepls',0);
+    SinglePlayerSettings.SwipeAmount:=IniReadInteger(SP_SettIniMas,'SinglePlayer','SwipeAmount',2);
+    SinglePlayerSettings.changevizint:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changevizint',0);
+    SinglePlayerSettings.changenetbuffer:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changenetbuffer',0);
+    SinglePlayerSettings.floatdsp:=IniReadInteger(SP_SettIniMas,'SinglePlayer','floatdsp',1);
+    SinglePlayerSettings.netagent:=IniReadString(SP_SettIniMas,'SinglePlayer','netagent','SinglePlayer '+playerversion);
+    SinglePlayerSettings.playerfreq:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playerfreq',8);
+    SinglePlayerSettings.inallpls:=IniReadInteger(SP_SettIniMas,'SinglePlayer','inallpls',0);
+    SinglePlayerSettings.closeaftadd:=IniReadInteger(SP_SettIniMas,'SinglePlayer','closeaftadd',1);
+    SinglePlayerSettings.searchintag:=IniReadInteger(SP_SettIniMas,'SinglePlayer','searchintag',0);
+    SinglePlayerSettings.altmenu:=IniReadString(SP_SettIniMas,'SinglePlayer','altmenu','');
+    SinglePlayerSettings.sortingallpls:=IniReadInteger(SP_SettIniMas,'SinglePlayer','sortingallpls',0);
+    SinglePlayerSettings.sysvolchange:=IniReadInteger(SP_SettIniMas,'SinglePlayer','sysvolchange',0);
+    SinglePlayerSettings.curentsysvol:=IniReadInteger(SP_SettIniMas,'SinglePlayer','curentsysvol',100);
+    SinglePlayerSettings.playallpls:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playallpls',0);
+    SinglePlayerSettings.readtags:=IniReadInteger(SP_SettIniMas,'SinglePlayer','readtags',1);
+    SinglePlayerSettings.netbuffer:=IniReadInteger(SP_SettIniMas,'SinglePlayer','netbuffer',10000);       {1..**}
+    SinglePlayerSettings.netprebuffer:=IniReadInteger(SP_SettIniMas,'SinglePlayer','netprebuffer',75);   {1..100}
+    SinglePlayerSettings.nettimeout:=IniReadInteger(SP_SettIniMas,'SinglePlayer','nettimeout',10000);     {1..**}
+    SinglePlayerSettings.netreadtimeout:=IniReadInteger(SP_SettIniMas,'SinglePlayer','netreadtimeout',0); {1..**}
+    SinglePlayerSettings.playerbuffer:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playerbuffer',200);    {10..5000}
+    SinglePlayerSettings.playupdateperiod:=IniReadInteger(SP_SettIniMas,'SinglePlayer','playupdateperiod',100); {5..100}
+    SinglePlayerSettings.changenetprebuffer:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changenetprebuffer',0);
+    SinglePlayerSettings.changenettimeout:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changenettimeout',0);
+    SinglePlayerSettings.changenetreadtimeout:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changenetreadtimeout',0);
+    SinglePlayerSettings.changeplayerbuffer:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changeplayerbuffer',0);
+    SinglePlayerSettings.changeplayupdateperiod:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changeplayupdateperiod',0);
+    SinglePlayerSettings.changeplayerfreq:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changeplayerfreq',0);
+    SinglePlayerSettings.nomlang:=IniReadInteger(SP_SettIniMas,'SinglePlayer','nomlang',1);
+    SinglePlayerSettings.changelang:=IniReadInteger(SP_SettIniMas,'SinglePlayer','changelang',0);
+    if singleplayersettings.startautoplay=1 then SinglePlayerSettings.lasturl:=IniReadString(SP_SettIniMas,'SinglePlayer','lasturl','') else SinglePlayerSettings.lasturl:='';
 
     if singleplayersettings.savepos=1 then
       begin
@@ -1120,94 +1192,12 @@ begin
        begin
        if fileexists(SinglePlayerDir+'playlist_'+inttostr(i)+'.pls') then
         begin
-          plscurtrackpos[i,1]:=PlayerSettingsINI.Readinteger('playlist_'+inttostr(i),'curtrack',1);
-          plscurtrackpos[i,2]:=PlayerSettingsINI.Readinteger('playlist_'+inttostr(i),'curpos',-1);
+          plscurtrackpos[i,1]:=IniReadInteger(SP_SettIniMas,'playlist_'+inttostr(i),'curtrack',1);
+          plscurtrackpos[i,2]:=IniReadInteger(SP_SettIniMas,'playlist_'+inttostr(i),'curpos',-1);
         end;
        end;
       end;
 
-   end else
-   begin
-    SinglePlayerSettings.skin:='default';
-    SinglePlayerSettings.skindir:='Skins\';
-    SinglePlayerSettings.favoritfolder:='';
-    SinglePlayerSettings.curentgenre:=1;
-    SinglePlayerSettings.curentplaylist:=1;
-    SinglePlayerSettings.kolltrack:=0;
-    SinglePlayerSettings.playedtrack:=1;
-    SinglePlayerSettings.logmode:=0;
-    SinglePlayerSettings.shufflekey:=0;
-    SinglePlayerSettings.timerrevkey:=0;
-    SinglePlayerSettings.curentvol:=10;
-    SinglePlayerSettings.sorttrue:=0;
-    SinglePlayerSettings.showcpu:=0;
-    SinglePlayerSettings.savepos:=0;
-    SinglePlayerSettings.curpos:=-1;
-    SinglePlayerSettings.playone:=0;
-    SinglePlayerSettings.ciclepls:=0;
-    SinglePlayerSettings.repaintplayergui:=0;
-    SinglePlayerSettings.kolltrackbuf:=0;
-    SinglePlayerSettings.showcoverpl:=0;
-    SinglePlayerSettings.eqon:=0;
-    SinglePlayerSettings.playfromgenre:=0;
-    SinglePlayerSettings.recadd:=0;
-    SinglePlayerSettings.perfeqexit:=0;
-    SinglePlayerSettings.znachcpueq:=0;
-    SinglePlayerSettings.znachcpueqmin:=0;
-    SinglePlayerSettings.perfeqon:=0;
-    SinglePlayerSettings.recone:=0;
-    SinglePlayerSettings.plavzvuk:=0;
-    SinglePlayerSettings.backzero:=0;
-    SinglePlayerSettings.startautoplay:=0;
-    SinglePlayerSettings.eqsetnow:=0;
-    SinglePlayerSettings.peremotka:=0;
-    SinglePlayerSettings.mute:=0;
-    SinglePlayerSettings.scrollsmalltrack:=0;
-    SinglePlayerSettings.scrolltrack:=0;
-    SinglePlayerSettings.removebanner:=0;
-    SinglePlayerSettings.folderadd:=0;
-    SinglePlayerSettings.tracknomkol:=0;
-    SinglePlayerSettings.autousb:=0;
-    SinglePlayerSettings.activatemode:=0;
-    curentgenre:=1;
-    SinglePlayerSettings.vizon:=0;
-    SinglePlayerSettings.vizintensivitu:=500;
-    SinglePlayerSettings.track2str:=0;
-    SinglePlayerSettings.wheelone:=0;
-    SinglePlayerSettings.swipeon:=0;
-    SinglePlayerSettings.manyadd:=0;
-    SinglePlayerSettings.playaftchangepls:=0;
-    SinglePlayerSettings.SwipeAmount:=2;
-    SinglePlayerSettings.changevizint:=0;
-    SinglePlayerSettings.changenetbuffer:=0;
-    SinglePlayerSettings.inallpls:=0;
-    SinglePlayerSettings.closeaftadd:=0;
-    SinglePlayerSettings.searchintag:=0;
-    SinglePlayerSettings.sortingallpls:=0;
-    SinglePlayerSettings.altmenu:='';
-    SinglePlayerSettings.sysvolchange:=0;
-    SinglePlayerSettings.curentsysvol:=100;
-    SinglePlayerSettings.playallpls:=0;
-    SinglePlayerSettings.readtags:=1;
-    SinglePlayerSettings.netbuffer:=10000;
-    SinglePlayerSettings.netprebuffer:=75;   {1..100}
-    SinglePlayerSettings.nettimeout:=10000;     {1..**}
-    SinglePlayerSettings.netreadtimeout:=0; {1..**}
-    SinglePlayerSettings.playerbuffer:=200;    {10..5000}
-    SinglePlayerSettings.playupdateperiod:=100; {5..100}
-    SinglePlayerSettings.changenetprebuffer:=0;
-    SinglePlayerSettings.changenettimeout:=0;
-    SinglePlayerSettings.changenetreadtimeout:=0;
-    SinglePlayerSettings.changeplayerbuffer:=0;
-    SinglePlayerSettings.changeplayupdateperiod:=0;
-    SinglePlayerSettings.floatdsp:=1;
-    SinglePlayerSettings.netagent:='SinglePlayer '+playerversion;
-    SinglePlayerSettings.playerfreq:=8;
-    SinglePlayerSettings.changeplayerfreq:=0;
-    SinglePlayerSettings.nomlang:=1;
-    SinglePlayerSettings.changelang:=0;
-    SinglePlayerSettings.lasturl:='';
-   end;
 {------------------------------------------------------------------------------}
 
    if SinglePlayerSettings.sysvolchange<>0 then setsystvol(SinglePlayerSettings.curentsysvol);
@@ -1452,85 +1442,87 @@ end;
 Procedure WritePlayerSettings;    //записываем настройки плеера в ini файл
 var
   i:integer;
+  PlayerSettingsINI:TIniFile;
 begin
-   if PlayerSettingsINI.ReadString('SinglePlayer','skin','-')<>SinglePlayerSettings.skin then PlayerSettingsINI.WriteString('SinglePlayer','skin',SinglePlayerSettings.skin);
-   if PlayerSettingsINI.ReadString('SinglePlayer','skindir','-')<>SinglePlayerSettings.skindir then PlayerSettingsINI.WriteString('SinglePlayer','skindir',SinglePlayerSettings.skindir);
-   if PlayerSettingsINI.ReadString('SinglePlayer','lang','-')<>SinglePlayerSettings.langg then PlayerSettingsINI.WriteString('SinglePlayer','lang',SinglePlayerSettings.langg);
-   if PlayerSettingsINI.ReadString('SinglePlayer','favoritfolder','')<>SinglePlayerSettings.favoritfolder then PlayerSettingsINI.WriteString('SinglePlayer','favoritfolder',SinglePlayerSettings.favoritfolder);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','curentplaylist',1)<>SinglePlayerSettings.curentplaylist then PlayerSettingsINI.WriteInteger('SinglePlayer','curentplaylist',SinglePlayerSettings.curentplaylist);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','curentgenre',0)<>SinglePlayerSettings.curentgenre then PlayerSettingsINI.WriteInteger('SinglePlayer','curentgenre',SinglePlayerSettings.curentgenre);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','kolltrack',0)<>SinglePlayerSettings.kolltrack then PlayerSettingsINI.WriteInteger('SinglePlayer','kolltrack',SinglePlayerSettings.kolltrack);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','playedtrack',0)<>SinglePlayerSettings.playedtrack then PlayerSettingsINI.WriteInteger('SinglePlayer','playedtrack',SinglePlayerSettings.playedtrack);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','logmode',0)<>SinglePlayerSettings.logmode then PlayerSettingsINI.WriteInteger('SinglePlayer','logmode',SinglePlayerSettings.logmode);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','shufflekey',0)<>SinglePlayerSettings.shufflekey then PlayerSettingsINI.WriteInteger('SinglePlayer','shufflekey',SinglePlayerSettings.shufflekey);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','timerrevkey',0)<>SinglePlayerSettings.timerrevkey then PlayerSettingsINI.WriteInteger('SinglePlayer','timerrevkey',SinglePlayerSettings.timerrevkey);
-   if PlayerSettingsINI.Readfloat('SinglePlayer','curentvol',0)<>SinglePlayerSettings.curentvol then
+   PlayerSettingsINI:=TIniFile.Create(SinglePlayerDir+'playersettings.ini');
+   PlayerSettingsINI.CacheUpdates:=True;
+   PlayerSettingsINI.WriteString('SinglePlayer','skin',SinglePlayerSettings.skin);
+   PlayerSettingsINI.WriteString('SinglePlayer','skindir',SinglePlayerSettings.skindir);
+   PlayerSettingsINI.WriteString('SinglePlayer','lang',SinglePlayerSettings.langg);
+   PlayerSettingsINI.WriteString('SinglePlayer','favoritfolder',SinglePlayerSettings.favoritfolder);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','curentplaylist',SinglePlayerSettings.curentplaylist);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','curentgenre',SinglePlayerSettings.curentgenre);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','kolltrack',SinglePlayerSettings.kolltrack);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','playedtrack',SinglePlayerSettings.playedtrack);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','logmode',SinglePlayerSettings.logmode);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','shufflekey',SinglePlayerSettings.shufflekey);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','timerrevkey',SinglePlayerSettings.timerrevkey);
    if SinglePlayerSettings.curentvol=0 then PlayerSettingsINI.Writefloat('SinglePlayer','curentvol',tempvol) else PlayerSettingsINI.Writefloat('SinglePlayer','curentvol',SinglePlayerSettings.curentvol);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','sorttrue',0)<>SinglePlayerSettings.sorttrue then PlayerSettingsINI.WriteInteger('SinglePlayer','sorttrue',SinglePlayerSettings.sorttrue);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','showcpu',0)<>SinglePlayerSettings.showcpu then PlayerSettingsINI.WriteInteger('SinglePlayer','showcpu',SinglePlayerSettings.showcpu);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','savepos',0)<>SinglePlayerSettings.savepos then PlayerSettingsINI.WriteInteger('SinglePlayer','savepos',SinglePlayerSettings.savepos);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','curpos',0)<>SinglePlayerSettings.curpos then PlayerSettingsINI.WriteInteger('SinglePlayer','curpos',SinglePlayerSettings.curpos);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','playone',0)<>SinglePlayerSettings.playone then PlayerSettingsINI.WriteInteger('SinglePlayer','playone',SinglePlayerSettings.playone);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','ciclepls',0)<>SinglePlayerSettings.ciclepls then PlayerSettingsINI.WriteInteger('SinglePlayer','ciclepls',SinglePlayerSettings.ciclepls);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','repaintplayergui',0)<>SinglePlayerSettings.repaintplayergui then PlayerSettingsINI.WriteInteger('SinglePlayer','repaintplayergui',SinglePlayerSettings.repaintplayergui);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','kolltrackbuf',0)<>SinglePlayerSettings.kolltrackbuf then PlayerSettingsINI.WriteInteger('SinglePlayer','kolltrackbuf',SinglePlayerSettings.kolltrackbuf);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','showcoverpl',0)<>SinglePlayerSettings.showcoverpl then PlayerSettingsINI.WriteInteger('SinglePlayer','showcoverpl',SinglePlayerSettings.showcoverpl);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','eqon',0)<>SinglePlayerSettings.eqon then PlayerSettingsINI.WriteInteger('SinglePlayer','eqon',SinglePlayerSettings.eqon);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','playfromgenre',0)<>SinglePlayerSettings.playfromgenre then PlayerSettingsINI.WriteInteger('SinglePlayer','playfromgenre',SinglePlayerSettings.playfromgenre);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','recadd',0)<>SinglePlayerSettings.recadd then PlayerSettingsINI.WriteInteger('SinglePlayer','recadd',SinglePlayerSettings.recadd);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','perfeqexit',0)<>SinglePlayerSettings.perfeqexit then PlayerSettingsINI.WriteInteger('SinglePlayer','perfeqexit',SinglePlayerSettings.perfeqexit);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','znachcpueq',0)<>SinglePlayerSettings.znachcpueq then PlayerSettingsINI.WriteInteger('SinglePlayer','znachcpueq',SinglePlayerSettings.znachcpueq);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','znachcpueqmin',0)<>SinglePlayerSettings.znachcpueqmin then PlayerSettingsINI.WriteInteger('SinglePlayer','znachcpueqmin',SinglePlayerSettings.znachcpueqmin);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','perfeqon',0)<>SinglePlayerSettings.perfeqon then PlayerSettingsINI.WriteInteger('SinglePlayer','perfeqon',SinglePlayerSettings.perfeqon);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','recone',0)<>SinglePlayerSettings.recone then PlayerSettingsINI.WriteInteger('SinglePlayer','recone',SinglePlayerSettings.recone);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','plavzvuk',0)<>SinglePlayerSettings.plavzvuk then PlayerSettingsINI.WriteInteger('SinglePlayer','plavzvuk',SinglePlayerSettings.plavzvuk);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','backzero',0)<>SinglePlayerSettings.backzero then PlayerSettingsINI.WriteInteger('SinglePlayer','backzero',SinglePlayerSettings.backzero);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','startautoplay',0)<>SinglePlayerSettings.startautoplay then PlayerSettingsINI.WriteInteger('SinglePlayer','startautoplay',SinglePlayerSettings.startautoplay);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','eqsetnow',0)<>SinglePlayerSettings.eqsetnow then PlayerSettingsINI.WriteInteger('SinglePlayer','eqsetnow',SinglePlayerSettings.eqsetnow);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','peremotka',0)<>SinglePlayerSettings.peremotka then PlayerSettingsINI.WriteInteger('SinglePlayer','peremotka',SinglePlayerSettings.peremotka);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','mute',0)<>SinglePlayerSettings.mute then PlayerSettingsINI.WriteInteger('SinglePlayer','mute',SinglePlayerSettings.mute);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','scrollsmalltrack',0)<>SinglePlayerSettings.scrollsmalltrack then PlayerSettingsINI.WriteInteger('SinglePlayer','scrollsmalltrack',SinglePlayerSettings.scrollsmalltrack);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','scrolltrack',0)<>SinglePlayerSettings.scrolltrack then PlayerSettingsINI.WriteInteger('SinglePlayer','scrolltrack',SinglePlayerSettings.scrolltrack);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','removebanner',0)<>SinglePlayerSettings.removebanner then PlayerSettingsINI.WriteInteger('SinglePlayer','removebanner',SinglePlayerSettings.removebanner);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','folderadd',0)<>SinglePlayerSettings.folderadd then PlayerSettingsINI.WriteInteger('SinglePlayer','folderadd',SinglePlayerSettings.folderadd);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','tracknomkol',0)<>SinglePlayerSettings.tracknomkol then PlayerSettingsINI.WriteInteger('SinglePlayer','tracknomkol',SinglePlayerSettings.tracknomkol);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','autousb',0)<>SinglePlayerSettings.autousb then PlayerSettingsINI.WriteInteger('SinglePlayer','autousb',SinglePlayerSettings.autousb);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','activatemode',0)<>SinglePlayerSettings.activatemode then PlayerSettingsINI.WriteInteger('SinglePlayer','activatemode',SinglePlayerSettings.activatemode);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','vizon',0)<>SinglePlayerSettings.vizon then PlayerSettingsINI.WriteInteger('SinglePlayer','vizon',SinglePlayerSettings.vizon);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','vizintensivitu',500)<>SinglePlayerSettings.vizintensivitu then PlayerSettingsINI.WriteInteger('SinglePlayer','vizintensivitu',SinglePlayerSettings.vizintensivitu);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','track2str',0)<>SinglePlayerSettings.track2str then PlayerSettingsINI.WriteInteger('SinglePlayer','track2str',SinglePlayerSettings.track2str);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','wheelone',0)<>SinglePlayerSettings.wheelone then PlayerSettingsINI.WriteInteger('SinglePlayer','wheelone',SinglePlayerSettings.wheelone);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','swipeon',0)<>SinglePlayerSettings.swipeon then PlayerSettingsINI.WriteInteger('SinglePlayer','swipeon',SinglePlayerSettings.swipeon);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','manyadd',0)<>SinglePlayerSettings.manyadd then PlayerSettingsINI.WriteInteger('SinglePlayer','manyadd',SinglePlayerSettings.manyadd);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','playaftchangepls',0)<>SinglePlayerSettings.playaftchangepls then PlayerSettingsINI.WriteInteger('SinglePlayer','playaftchangepls',SinglePlayerSettings.playaftchangepls);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','SwipeAmount',2)<>SinglePlayerSettings.SwipeAmount then PlayerSettingsINI.WriteInteger('SinglePlayer','SwipeAmount',SinglePlayerSettings.SwipeAmount);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changevizint',0)<>SinglePlayerSettings.changevizint then PlayerSettingsINI.WriteInteger('SinglePlayer','changevizint',SinglePlayerSettings.changevizint);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changenetbuffer',0)<>SinglePlayerSettings.changenetbuffer then PlayerSettingsINI.WriteInteger('SinglePlayer','changenetbuffer',SinglePlayerSettings.changenetbuffer);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','inallpls',0)<>SinglePlayerSettings.inallpls then PlayerSettingsINI.WriteInteger('SinglePlayer','inallpls',SinglePlayerSettings.inallpls);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','closeaftadd',0)<>SinglePlayerSettings.closeaftadd then PlayerSettingsINI.WriteInteger('SinglePlayer','closeaftadd',SinglePlayerSettings.closeaftadd);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','searchintag',0)<>SinglePlayerSettings.searchintag then PlayerSettingsINI.WriteInteger('SinglePlayer','searchintag',SinglePlayerSettings.searchintag);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','sortingallpls',0)<>SinglePlayerSettings.sortingallpls then PlayerSettingsINI.WriteInteger('SinglePlayer','sortingallpls',SinglePlayerSettings.sortingallpls);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','sysvolchange',0)<>SinglePlayerSettings.sysvolchange then PlayerSettingsINI.WriteInteger('SinglePlayer','sysvolchange',SinglePlayerSettings.sysvolchange);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','curentsysvol',0)<>SinglePlayerSettings.curentsysvol then PlayerSettingsINI.WriteInteger('SinglePlayer','curentsysvol',SinglePlayerSettings.curentsysvol);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','playallpls',0)<>SinglePlayerSettings.playallpls then PlayerSettingsINI.WriteInteger('SinglePlayer','playallpls',SinglePlayerSettings.playallpls);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','readtags',0)<>SinglePlayerSettings.readtags then PlayerSettingsINI.WriteInteger('SinglePlayer','readtags',SinglePlayerSettings.readtags);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','netbuffer',10000)<>SinglePlayerSettings.netbuffer then PlayerSettingsINI.WriteInteger('SinglePlayer','netbuffer',SinglePlayerSettings.netbuffer);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','netprebuffer',75)<>SinglePlayerSettings.netprebuffer then PlayerSettingsINI.WriteInteger('SinglePlayer','netprebuffer',SinglePlayerSettings.netprebuffer);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','nettimeout',10000)<>SinglePlayerSettings.nettimeout then PlayerSettingsINI.WriteInteger('SinglePlayer','nettimeout',SinglePlayerSettings.nettimeout);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','netreadtimeout',0)<>SinglePlayerSettings.netreadtimeout then PlayerSettingsINI.WriteInteger('SinglePlayer','netreadtimeout',SinglePlayerSettings.netreadtimeout);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','playerbuffer',200)<>SinglePlayerSettings.playerbuffer then PlayerSettingsINI.WriteInteger('SinglePlayer','playerbuffer',SinglePlayerSettings.playerbuffer);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','playupdateperiod',100)<>SinglePlayerSettings.playupdateperiod then PlayerSettingsINI.WriteInteger('SinglePlayer','playupdateperiod',SinglePlayerSettings.playupdateperiod);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changenetprebuffer',0)<>SinglePlayerSettings.changenetprebuffer then PlayerSettingsINI.WriteInteger('SinglePlayer','changenetprebuffer',SinglePlayerSettings.changenetprebuffer);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changenettimeout',0)<>SinglePlayerSettings.changenettimeout then PlayerSettingsINI.WriteInteger('SinglePlayer','changenettimeout',SinglePlayerSettings.changenettimeout);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changenetreadtimeout',0)<>SinglePlayerSettings.changenetreadtimeout then PlayerSettingsINI.WriteInteger('SinglePlayer','changenetreadtimeout',SinglePlayerSettings.changenetreadtimeout);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changeplayerbuffer',0)<>SinglePlayerSettings.changeplayerbuffer then PlayerSettingsINI.WriteInteger('SinglePlayer','changeplayerbuffer',SinglePlayerSettings.changeplayerbuffer);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changeplayupdateperiod',0)<>SinglePlayerSettings.changeplayupdateperiod then PlayerSettingsINI.WriteInteger('SinglePlayer','changeplayupdateperiod',SinglePlayerSettings.changeplayupdateperiod);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','floatdsp',0)<>SinglePlayerSettings.floatdsp then PlayerSettingsINI.WriteInteger('SinglePlayer','floatdsp',SinglePlayerSettings.floatdsp);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','playerfreq',0)<>SinglePlayerSettings.playerfreq then PlayerSettingsINI.WriteInteger('SinglePlayer','playerfreq',SinglePlayerSettings.playerfreq);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changeplayerfreq',0)<>SinglePlayerSettings.changeplayerfreq then PlayerSettingsINI.WriteInteger('SinglePlayer','changeplayerfreq',SinglePlayerSettings.changeplayerfreq);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','nomlang',1)<>SinglePlayerSettings.nomlang then PlayerSettingsINI.WriteInteger('SinglePlayer','nomlang',SinglePlayerSettings.nomlang);
-   if PlayerSettingsINI.ReadInteger('SinglePlayer','changelang',0)<>SinglePlayerSettings.changelang then PlayerSettingsINI.WriteInteger('SinglePlayer','changelang',SinglePlayerSettings.changelang);
-   if PlayerSettingsINI.ReadString('SinglePlayer','curentdir','')<>curentdir then PlayerSettingsINI.WriteString('SinglePlayer','curentdir',curentdir);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','sorttrue',SinglePlayerSettings.sorttrue);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','showcpu',SinglePlayerSettings.showcpu);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','savepos',SinglePlayerSettings.savepos);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','curpos',SinglePlayerSettings.curpos);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','playone',SinglePlayerSettings.playone);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','ciclepls',SinglePlayerSettings.ciclepls);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','repaintplayergui',SinglePlayerSettings.repaintplayergui);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','kolltrackbuf',SinglePlayerSettings.kolltrackbuf);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','showcoverpl',SinglePlayerSettings.showcoverpl);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','eqon',SinglePlayerSettings.eqon);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','playfromgenre',SinglePlayerSettings.playfromgenre);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','recadd',SinglePlayerSettings.recadd);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','perfeqexit',SinglePlayerSettings.perfeqexit);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','znachcpueq',SinglePlayerSettings.znachcpueq);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','znachcpueqmin',SinglePlayerSettings.znachcpueqmin);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','perfeqon',SinglePlayerSettings.perfeqon);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','recone',SinglePlayerSettings.recone);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','plavzvuk',SinglePlayerSettings.plavzvuk);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','backzero',SinglePlayerSettings.backzero);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','startautoplay',SinglePlayerSettings.startautoplay);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','eqsetnow',SinglePlayerSettings.eqsetnow);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','peremotka',SinglePlayerSettings.peremotka);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','mute',SinglePlayerSettings.mute);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','scrollsmalltrack',SinglePlayerSettings.scrollsmalltrack);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','scrolltrack',SinglePlayerSettings.scrolltrack);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','removebanner',SinglePlayerSettings.removebanner);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','folderadd',SinglePlayerSettings.folderadd);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','tracknomkol',SinglePlayerSettings.tracknomkol);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','autousb',SinglePlayerSettings.autousb);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','activatemode',SinglePlayerSettings.activatemode);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','vizon',SinglePlayerSettings.vizon);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','vizintensivitu',SinglePlayerSettings.vizintensivitu);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','track2str',SinglePlayerSettings.track2str);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','wheelone',SinglePlayerSettings.wheelone);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','swipeon',SinglePlayerSettings.swipeon);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','manyadd',SinglePlayerSettings.manyadd);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','playaftchangepls',SinglePlayerSettings.playaftchangepls);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','SwipeAmount',SinglePlayerSettings.SwipeAmount);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changevizint',SinglePlayerSettings.changevizint);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changenetbuffer',SinglePlayerSettings.changenetbuffer);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','inallpls',SinglePlayerSettings.inallpls);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','closeaftadd',SinglePlayerSettings.closeaftadd);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','searchintag',SinglePlayerSettings.searchintag);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','sortingallpls',SinglePlayerSettings.sortingallpls);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','sysvolchange',SinglePlayerSettings.sysvolchange);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','curentsysvol',SinglePlayerSettings.curentsysvol);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','playallpls',SinglePlayerSettings.playallpls);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','readtags',SinglePlayerSettings.readtags);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','netbuffer',SinglePlayerSettings.netbuffer);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','netprebuffer',SinglePlayerSettings.netprebuffer);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','nettimeout',SinglePlayerSettings.nettimeout);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','netreadtimeout',SinglePlayerSettings.netreadtimeout);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','playerbuffer',SinglePlayerSettings.playerbuffer);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','playupdateperiod',SinglePlayerSettings.playupdateperiod);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changenetprebuffer',SinglePlayerSettings.changenetprebuffer);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changenettimeout',SinglePlayerSettings.changenettimeout);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changenetreadtimeout',SinglePlayerSettings.changenetreadtimeout);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changeplayerbuffer',SinglePlayerSettings.changeplayerbuffer);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changeplayupdateperiod',SinglePlayerSettings.changeplayupdateperiod);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','floatdsp',SinglePlayerSettings.floatdsp);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','playerfreq',SinglePlayerSettings.playerfreq);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changeplayerfreq',SinglePlayerSettings.changeplayerfreq);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','nomlang',SinglePlayerSettings.nomlang);
+   PlayerSettingsINI.WriteInteger('SinglePlayer','changelang',SinglePlayerSettings.changelang);
+   PlayerSettingsINI.WriteString('SinglePlayer','altmenu',SinglePlayerSettings.altmenu);
 
    if singleplayersettings.savepos = 1 then
     begin
@@ -1538,13 +1530,14 @@ begin
        begin
         if fileexists(SinglePlayerDir+'playlist_'+inttostr(i)+'.pls') then
          begin
-          if PlayerSettingsINI.ReadInteger('playlist_'+inttostr(i),'curtrack',0)<>plscurtrackpos[i,1] then PlayerSettingsINI.WriteInteger('playlist_'+inttostr(i),'curtrack',plscurtrackpos[i,1]);
-          if PlayerSettingsINI.ReadInteger('playlist_'+inttostr(i),'curpos',0)<>plscurtrackpos[i,2] then PlayerSettingsINI.WriteInteger('playlist_'+inttostr(i),'curpos',plscurtrackpos[i,2]);
+          PlayerSettingsINI.WriteInteger('playlist_'+inttostr(i),'curtrack',plscurtrackpos[i,1]);
+          PlayerSettingsINI.WriteInteger('playlist_'+inttostr(i),'curpos',plscurtrackpos[i,2]);
          end;
        end;
     end;
 
    PlayerSettingsINI.UpdateFile;
+   PlayerSettingsINI.Free;
 end;
 
 
@@ -3003,7 +2996,13 @@ begin
          exit;
         end;
      end;
-    if msgtap=4 then begin msgtap:=0; SinglePlayerGUI.invalidate; exit; end;
+    if msgtap=4 then
+     begin
+      msgtap:=0;
+      if prewskin.Handle<>0 then prewskin.Free;
+      SinglePlayerGUI.invalidate;
+      exit;
+     end;
 {-----------------------------------------------------------------------------}
    end;
 
@@ -3027,6 +3026,7 @@ begin
               begin
               SinglePlayerGUI.Hide;
               {$IFDEF SP_STANDALONE}
+              senderstr('minimize');
               checkexplorer;
               {$ENDIF}
               end;
@@ -3141,13 +3141,13 @@ begin
                   curentdir:='';
                   statusplaylist:=1;
                   SinglePlayerGUI.Refresh;
-                  SleepAndProcess(200);
+                  Sleep(200);
                   statusplaylist:=0;
                   curenttrack:='';
                   playlistadd:=0;
                   findmarked.Start;
                   exit;
-                 end
+                 end;
                end;
                curentpage:='disktree';
                if pageindex=0 then pageindex:=1;
@@ -3216,7 +3216,7 @@ begin
             'stopconnecting':begin connecting:=0; radioerror:=1; SinglePlayerGUI.Invalidate; exit; end;
             'keyboardmodesw': begin  if keyboardmode<kollraskl then inc(keyboardmode) else keyboardmode:=1; SinglePlayerGUI.invalidate; exit; end;
             'eq': begin if curentpage<>'eq' then begin curentpage:='eq'; SinglePlayerGUI.invalidate; exit; end; end;
-            'playlistexit': begin PostMessage(MMCCore.Handle,wm_IMCommand,0,0); curentpage:='singleplayer'; SinglePlayerSettings.playedtrack:=gettrackindex(curenttrack); SinglePlayerGUI.invalidate; exit; end;
+            'playlistexit': begin {$IFDEF SP_STANDALONE}SendMessage{$ELSE}PostMessage{$ENDIF}(MMCCore.Handle,wm_IMCommand,0,0); curentpage:='singleplayer'; SinglePlayerSettings.playedtrack:=gettrackindex(curenttrack); SinglePlayerGUI.invalidate; exit; end;
             'plsnextpage': begin
              inc(curplspage);
              AfterSwipe:=0;
@@ -3236,7 +3236,7 @@ begin
               begin
                playlistferstopen:=1;
                curentpage:='playlist';
-               PostMessage(MMCCore.Handle,wm_IMCommand,1,0);
+               {$IFDEF SP_STANDALONE}SendMessage{$ELSE}PostMessage{$ENDIF}(MMCCore.Handle,wm_IMCommand,1,0);
                SinglePlayerGUI.invalidate;
                exit;
               end;
@@ -3244,7 +3244,7 @@ begin
             'playersettings': begin
               if curentpage<>'playersettings' then
                begin
-                if loadiconkl=1 then plsett:=0 else plsett:=1; itsicon:=getindexicon('generalsetpl.jpg');
+                if loadiconkl=1 then plsett:=0 else plsett:=1; itsicon:=getindexicon('generalsetpl.bmp');
                 plsetread;
                 curentpage:='playersettings';
                 SinglePlayerGUI.invalidate;
@@ -3436,12 +3436,14 @@ begin
                       (length(itdir)-pos('.ogg',itdir)=3) and (pos('.ogg',itdir)<>0) or
                       (length(itdir)-pos('.flac',itdir)=4) and (pos('.flac',itdir)<>0) or
                       (length(itdir)-pos('.m4a',itdir)=3) and (pos('.m4a',itdir)<>0) or
+                      (length(itdir)-pos('.mpc',itdir)=3) and (pos('.mpc',itdir)<>0) or
                       (length(itdir)-pos('.aiff',itdir)=4) and (pos('.aiff',itdir)<>0) or
                       (length(itdir)-pos('.MP3',itdir)=3) and (pos('.MP3',itdir)<>0) or
                       (length(itdir)-pos('.WAV',itdir)=3) and (pos('.WAV',itdir)<>0) or
                       (length(itdir)-pos('.OGG',itdir)=3) and (pos('.OGG',itdir)<>0) or
                       (length(itdir)-pos('.FLAC',itdir)=4) and (pos('.FLAC',itdir)<>0) or
                       (length(itdir)-pos('.M4A',itdir)=3) and (pos('.M4A',itdir)<>0) or
+                      (length(itdir)-pos('.MPC',itdir)=3) and (pos('.MPC',itdir)<>0) or
                       (length(itdir)-pos('.m3u',itdir)=3) and (pos('.m3u',itdir)<>0) or
                       (length(itdir)-pos('.M3U',itdir)=3) and (pos('.M3U',itdir)<>0) or
                       (length(itdir)-pos('.pls',itdir)=3) and (pos('.pls',itdir)<>0) or
@@ -3620,8 +3622,14 @@ begin
                playerversionstr:=curworkskinini.ReadString('mainform','singleplayerversion','');
                if pos(playerversion+';',playerversionstr)=0 then skinversion:=skinversion+': Не подходит!' else skinversion:=skinversion+': Подходит!';
                curworkskinini.Free;
-               if fileexists(SinglePlayerDir+SinglePlayerSettings.skindir+skinmass[i]+'\Icons\preview.jpg') then prewskin.LoadFromFile(UTF8Encode(SinglePlayerDir+SinglePlayerSettings.skindir+skinmass[i])+'\Icons\preview.jpg');
-              end;
+               if fileexists(ansitoutf8(SinglePlayerDir+SinglePlayerSettings.skindir+skinmass[i])+'\icons\preview.bmp')then
+                begin
+                 prewskin:= graphics.tbitmap.Create;
+                 prewskin.Width  := 400;
+                 prewskin.Height := 240;
+                 prewskin.Handle:=loadbmp(ansitoutf8(SinglePlayerDir+SinglePlayerSettings.skindir+skinmass[i])+'\icons\preview.bmp');
+                end;
+               end;
             end;
           end;
          exit;
@@ -3635,13 +3643,13 @@ begin
                  begin
                   if i=8 then
                    begin
-                    if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                       (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.SwipeAmount<10)
+                    if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                       (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.SwipeAmount<10)
                     then begin inc(SinglePlayerSettings.SwipeAmount); exit; end;
-                    if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.SwipeAmount))+10) and
+                    if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.SwipeAmount))+10) and
                        (x<plsettingscor[i,3]) and (SinglePlayerSettings.SwipeAmount>2)
                     then begin dec(SinglePlayerSettings.SwipeAmount); exit; end;
-                    if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                    if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                     if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                    end else if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                  end else
@@ -3649,112 +3657,112 @@ begin
                begin
                  if i=1 then
                   begin
-                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                      (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.znachcpueq<100)
+                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                      (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.znachcpueq<100)
                    then begin inc(SinglePlayerSettings.znachcpueq); exit; end;
-                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.znachcpueq))+10) and
+                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.znachcpueq))+10) and
                       (x<plsettingscor[i,3]) and (SinglePlayerSettings.znachcpueq>SinglePlayerSettings.znachcpueqmin)
                    then begin dec(SinglePlayerSettings.znachcpueq); exit; end;
-                   if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                   if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                    if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                   end else
                  if i=2 then
                   begin
-                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                      (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.znachcpueqmin<SinglePlayerSettings.znachcpueq)
+                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                      (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.znachcpueqmin<SinglePlayerSettings.znachcpueq)
                    then begin inc(SinglePlayerSettings.znachcpueqmin); exit; end;
-                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.znachcpueqmin))+10) and
+                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.znachcpueqmin))+10) and
                       (x<plsettingscor[i,3]) and (SinglePlayerSettings.znachcpueqmin>1)
                    then begin dec(SinglePlayerSettings.znachcpueqmin); exit; end;
-                   if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                   if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                    if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                   end else
                 if i=3 then
                  begin
-                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                     (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.vizintensivitu<2000)
+                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                     (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.vizintensivitu<2000)
                   then begin inc(SinglePlayerSettings.vizintensivitu,100); exit; end;
-                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.vizintensivitu))+10) and
+                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.vizintensivitu))+10) and
                      (x<plsettingscor[i,3]) and (SinglePlayerSettings.vizintensivitu>100)
                   then begin dec(SinglePlayerSettings.vizintensivitu,100); exit; end;
-                  if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                  if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                   if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                  end else
                 if i=4 then
                  begin
-                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                     (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.netbuffer<180000)
+                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                     (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.netbuffer<180000)
                   then begin inc(SinglePlayerSettings.netbuffer,500); exit; end;
-                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netbuffer))+10) and
+                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netbuffer))+10) and
                      (x<plsettingscor[i,3]) and (SinglePlayerSettings.netbuffer>0)
                   then begin dec(SinglePlayerSettings.netbuffer,500); exit; end;
-                  if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                  if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                   if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                   end else
                  if i=5 then
                   begin
-                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                      (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.netprebuffer<100)
+                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                      (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.netprebuffer<100)
                    then begin inc(SinglePlayerSettings.netprebuffer,5); exit; end;
-                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netprebuffer))+10) and
+                   if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netprebuffer))+10) and
                       (x<plsettingscor[i,3]) and (SinglePlayerSettings.netprebuffer>0)
                    then begin dec(SinglePlayerSettings.netprebuffer,5); exit; end;
-                   if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                   if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                    if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                   end else
                   if i=6 then
                    begin
-                    if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                       (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.nettimeout<60000)
+                    if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                       (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.nettimeout<60000)
                     then begin inc(SinglePlayerSettings.nettimeout,500); exit; end;
-                    if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.nettimeout))+10) and
+                    if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.nettimeout))+10) and
                        (x<plsettingscor[i,3]) and (SinglePlayerSettings.nettimeout>500)
                     then begin dec(SinglePlayerSettings.nettimeout,500); exit; end;
-                    if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                    if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                     if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                    end else
                    if i=7 then
                     begin
-                     if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                        (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.netreadtimeout<3600000)
+                     if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                        (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.netreadtimeout<3600000)
                      then begin inc(SinglePlayerSettings.netreadtimeout,60000); exit; end;
-                     if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netreadtimeout))+10) and
+                     if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netreadtimeout))+10) and
                         (x<plsettingscor[i,3]) and (SinglePlayerSettings.netreadtimeout>60000)
                      then begin dec(SinglePlayerSettings.netreadtimeout,60000); exit; end;
-                     if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                     if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                      if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                     end else
                     if i=8 then
                      begin
-                      if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                         (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.playerbuffer<5000)
+                      if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                         (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.playerbuffer<5000)
                       then begin inc(SinglePlayerSettings.playerbuffer,50); exit; end;
-                      if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.playerbuffer))+10) and
+                      if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.playerbuffer))+10) and
                          (x<plsettingscor[i,3]) and (SinglePlayerSettings.playerbuffer>50)
                       then begin dec(SinglePlayerSettings.playerbuffer,50); exit; end;
-                      if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                      if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                       if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                      end else
                      if i=9 then
                       begin
-                       if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                          (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.playupdateperiod<100)
+                       if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                          (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.playupdateperiod<100)
                        then begin inc(SinglePlayerSettings.playupdateperiod,1); exit; end;
-                       if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.playupdateperiod))+10) and
+                       if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.playupdateperiod))+10) and
                           (x<plsettingscor[i,3]) and (SinglePlayerSettings.playupdateperiod>1)
                        then begin dec(SinglePlayerSettings.playupdateperiod,1); exit; end;
-                       if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                       if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                        if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                       end else
                 if i=10 then
                  begin
-                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                     (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.playerfreq<14)
+                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                     (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.playerfreq<14)
                   then begin inc(SinglePlayerSettings.playerfreq,1); exit; end;
-                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(playerfreqmas[SinglePlayerSettings.playerfreq]))+10) and
+                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(inttostr(playerfreqmas[SinglePlayerSettings.playerfreq]))+10) and
                      (x<plsettingscor[i,3]) and (SinglePlayerSettings.playerfreq>1)
                   then begin dec(SinglePlayerSettings.playerfreq,1); exit; end;
-                  if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                  if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                   if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                  end else if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                end else
@@ -3762,13 +3770,13 @@ begin
                begin
                 if i=10 then
                  begin
-                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
-                     (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width)  and (SinglePlayerSettings.nomlang<100) and (plsettingsznach[plsett,i]='1')
+                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) and
+                     (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width)  and (SinglePlayerSettings.nomlang<100) and (plsettingsznach[plsett,i]='1')
                   then begin inc(SinglePlayerSettings.nomlang); loadlang; LoadPlayerSkin(1); exit; end;
-                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(singleplayersettings.langg)+10) and
+                  if (x>plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)+playericon[getindexicon('equp.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(singleplayersettings.langg)+10) and
                      (x<plsettingscor[i,3]) and (SinglePlayerSettings.nomlang>1) and (plsettingsznach[plsett,i]='1')
                   then begin dec(SinglePlayerSettings.nomlang); loadlang; LoadPlayerSkin(1); exit; end;
-                  if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
+                  if (x>plsettingscor[i,1]) and (x<plsettingscor[i,1]+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2)) then
                   if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                  end else if plsettingsznach[plsett,i]='0' then plsettingsznach[plsett,i]:='1' else plsettingsznach[plsett,i]:='0';
                end  else
@@ -3829,11 +3837,11 @@ begin
           SinglePlayerSettings.playedtrack:=i;
          end;
         end;
-      if (x>plstrackcor[i,5]) and (x<plstrackcor[i,7]) and (y>plstrackcor[i,6])  and (y<plstrackcor[i,8]) and (getindexicon('plsdeldisk.jpg')<>0) then begin msgtap:=1; curworktrack:=track[i]; msgdel; end;
-      if (x>plstrackcor[i,9]) and (x<plstrackcor[i,11]) and (y>plstrackcor[i,10])  and (y<plstrackcor[i,12]) and (getindexicon('plsdel.jpg')<>0) then delfrompls(track[i]);
-      if (x>plstrackcor[i,13]) and (x<plstrackcor[i,15]) and (y>plstrackcor[i,14])  and (y<plstrackcor[i,16]) and ((curenttrack=track[i]) or (i = SinglePlayerSettings.playedtrack)) and (getindexicon('plsdown.jpg')<>0) then trackdown(i);
-      if (x>plstrackcor[i,17]) and (x<plstrackcor[i,19]) and (y>plstrackcor[i,18])  and (y<plstrackcor[i,20]) and ((curenttrack=track[i]) or (i = SinglePlayerSettings.playedtrack)) and (getindexicon('plsup.jpg')<>0) then trackup(i);
-      if (x>plstrackcor[i,21]) and (x<plstrackcor[i,23]) and (y>plstrackcor[i,22])  and (y<plstrackcor[i,24]) and (getindexicon('plsfav.jpg')<>0) then begin msgtap:=2; curworktrack:=track[i]; msgfav; end;
+      if (x>plstrackcor[i,5]) and (x<plstrackcor[i,7]) and (y>plstrackcor[i,6])  and (y<plstrackcor[i,8]) and (getindexicon('plsdeldisk.bmp')<>0) then begin msgtap:=1; curworktrack:=track[i]; msgdel; end;
+      if (x>plstrackcor[i,9]) and (x<plstrackcor[i,11]) and (y>plstrackcor[i,10])  and (y<plstrackcor[i,12]) and (getindexicon('plsdel.bmp')<>0) then delfrompls(track[i]);
+      if (x>plstrackcor[i,13]) and (x<plstrackcor[i,15]) and (y>plstrackcor[i,14])  and (y<plstrackcor[i,16]) and ((curenttrack=track[i]) or (i = SinglePlayerSettings.playedtrack)) and (getindexicon('plsdown.bmp')<>0) then trackdown(i);
+      if (x>plstrackcor[i,17]) and (x<plstrackcor[i,19]) and (y>plstrackcor[i,18])  and (y<plstrackcor[i,20]) and ((curenttrack=track[i]) or (i = SinglePlayerSettings.playedtrack)) and (getindexicon('plsup.bmp')<>0) then trackup(i);
+      if (x>plstrackcor[i,21]) and (x<plstrackcor[i,23]) and (y>plstrackcor[i,22])  and (y<plstrackcor[i,24]) and (getindexicon('plsfav.bmp')<>0) then begin msgtap:=2; curworktrack:=track[i]; msgfav; end;
      end;
     SinglePlayerGUI.Invalidate;
     exit;
@@ -3999,6 +4007,7 @@ begin
   while not eof(langfile) do
    begin
     readln(langfile,langstr);
+    langstr:=langstr;
     if (langstr='[words'+inttostr(singleplayersettings.nomlang)+']') and (findl=0) then begin findl:=1; continue; end;
     if findl=1 then
      begin
@@ -4044,354 +4053,358 @@ end;
 
 Procedure LoadPlayerSkin(mode:byte);
   var
-    i,j:integer;
+    i,j,ist,iend:integer;
   begin
+   ist:=0;
+   iend:=0;
   try
    if fileexists(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\skcfg.cfg') then
     begin
-    skinsettings := TINIFile.Create(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\skcfg.cfg');
+     LoadSP_SkinIniMas(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\skcfg.cfg');
 
 {-------------------------- параметры скина -----------------------------------}
  if mode=0 then
   begin
-    plset.mainformwidth:=skinsettings.Readinteger('mainform','width',800);
-    plset.mainformheight:=skinsettings.Readinteger('mainform','height',480);
-    plset.mainformleft:=skinsettings.Readinteger('mainform','left',0);
-    plset.mainformtop:=skinsettings.Readinteger('mainform','top',0);
-    plset.treeleft:=skinsettings.Readinteger('singleplayer','treeleft',50);
-    plset.treetop:=skinsettings.Readinteger('singleplayer','treetop',50);
-    plset.treeleftsp:=skinsettings.Readinteger('singleplayer','treeleftsp',30);
-    plset.treetopsp:=skinsettings.Readinteger('singleplayer','treetopsp',30);
-    plset.treetextsize:=skinsettings.Readinteger('singleplayer','treetextsize',10);
-    plset.treetextsizetree:=skinsettings.Readinteger('singleplayer','treetextsizetree',16);
-    plset.treeintervalhorz:=skinsettings.Readinteger('singleplayer','treeintervalhorz',20);
-    plset.treeintervalvert:=skinsettings.Readinteger('singleplayer','treeintervalvert',20);
-    plset.maxrighttree:=skinsettings.Readinteger('singleplayer','maxrighttree',780);
-    plset.textinterval:=skinsettings.Readinteger('singleplayer','textinterval',2);
-    plset.treetype:=skinsettings.Readinteger('singleplayer','treetype',0);
-    plset.treetextX:=skinsettings.Readinteger('singleplayer','treetextX',0);
-    plset.treetextY:=skinsettings.Readinteger('singleplayer','treetextY',0);
-    plset.treeintervalverttree:=skinsettings.Readinteger('singleplayer','treeintervalverttree',0);
-    plset.explorertextfolder:=skinsettings.Readinteger('singleplayer','explorertextfolder',$FFFFFF);
-    plset.explorertextfiles:=skinsettings.Readinteger('singleplayer','explorertextfiles',$FFFFFF);
-    plset.tracktimeleft:=skinsettings.Readstring('singleplayer','tracktimeleft','0');
-    plset.tracktimetop:=skinsettings.Readinteger('singleplayer','tracktimetop',0);
-    plset.tracktimecolor:=skinsettings.Readinteger('singleplayer','tracktimecolor',$FFFFFF);
-    plset.tracktimesize:=skinsettings.Readinteger('singleplayer','tracktimesize',16);
-    plset.timetrackleft:=skinsettings.Readstring('singleplayer','timetrackleft','0');
-    plset.timetracktop:=skinsettings.Readinteger('singleplayer','timetracktop',0);
-    plset.timetrackcolor:=skinsettings.Readinteger('singleplayer','timetrackcolor',$FFFFFF);
-    plset.timetracksize:=skinsettings.Readinteger('singleplayer','timetracksize',12);
-    plset.tracktitleleft:=skinsettings.Readstring('singleplayer','tracktitleleft','0');
-    plset.tracktitlewidth:=skinsettings.Readinteger('singleplayer','tracktitlewidth',0);
-    plset.tracktitletop:=skinsettings.Readinteger('singleplayer','tracktitletop',0);
-    plset.trackartisttitletop:=skinsettings.Readinteger('singleplayer','trackartisttitletop',0);
-    plset.tracktitlesize:=skinsettings.Readinteger('singleplayer','tracktitlesize',0);
-    plset.tracktitlecolor:=skinsettings.Readinteger('singleplayer','tracktitlecolor',$FFFFFF);
-    plset.statustextleft:=skinsettings.Readstring('singleplayer','statustextleft','0');
-    plset.statustexttop:=skinsettings.Readinteger('singleplayer','statustexttop',0);
-    plset.statustextcolor:=skinsettings.Readinteger('singleplayer','statustextcolor',$FFFFFF);
-    plset.statustextsize:=skinsettings.Readinteger('singleplayer','statustextsize',16);
-    plset.playedtrackleft:=skinsettings.Readstring('singleplayer','playedtrackleft','0');
-    plset.playedtracktop:=skinsettings.Readinteger('singleplayer','playedtracktop',0);
-    plset.playedtrackcolor:=skinsettings.Readinteger('singleplayer','playedtrackcolor',0);
-    plset.playedtracksize:=skinsettings.Readinteger('singleplayer','playedtracksize',0);
-    plset.cureqleft:=skinsettings.Readstring('singleplayer','cureqleft','0');
-    plset.cureqtop:=skinsettings.Readinteger('singleplayer','cureqtop',0);
-    plset.cureqcolor:=skinsettings.Readinteger('singleplayer','cureqcolor',0);
-    plset.cureqsize:=skinsettings.Readinteger('singleplayer','cureqsize',0);
-    plset.curvolleft:=skinsettings.Readstring('eq','curvolleft','0');
-    plset.curvoltop:=skinsettings.Readinteger('eq','curvoltop',0);
-    plset.curvolcolor:=skinsettings.Readinteger('eq','curvolcolor',0);
-    plset.curvolsize:=skinsettings.Readinteger('eq','curvolsize',0);
-    plset.curplsleft:=skinsettings.Readstring('singleplayer','curplsleft','0');
-    plset.curplstop:=skinsettings.Readinteger('singleplayer','curplstop',0);
-    plset.curplscolor:=skinsettings.Readinteger('singleplayer','curplscolor',0);
-    plset.curplssize:=skinsettings.Readinteger('singleplayer','curplssize',0);
-    plset.playerdatetimecolor:=skinsettings.Readinteger('singleplayer','playerdatetimecolor',$FFFFFF);
-    plset.playerdatetimesize:=skinsettings.Readinteger('singleplayer','playerdatetimesize',16);
-    plset.playerdatetimeleft:=skinsettings.Readstring('singleplayer','playerdatetimeleft','0');
-    plset.playerdatetimetop:=skinsettings.Readinteger('singleplayer','playerdatetimetop',0);
-    plset.curentdircolor:=skinsettings.Readinteger('singleplayer','curentdircolor',$FFFFFF);
-    plset.curentdirsize:=skinsettings.Readinteger('singleplayer','curentdirsize',24);
-    plset.curentdirleft:=skinsettings.Readstring('singleplayer','curentdirleft','0');
-    plset.curentdirtop:=skinsettings.Readinteger('singleplayer','curentdirtop',0);
-    plset.curentdirplcolor:=skinsettings.Readinteger('singleplayer','curentdirplcolor',$FFFFFF);
-    plset.curentdirplsize:=skinsettings.Readinteger('singleplayer','curentdirplsize',24);
-    plset.curentdirplleft:=skinsettings.Readstring('singleplayer','curentdirplleft','0');
-    plset.curentdirpltop:=skinsettings.Readinteger('singleplayer','curentdirpltop',0);
-    plset.playlisttextr:=skinsettings.Readinteger('singleplayer','playlisttextr',0);
-    plset.playlisttextstr:=skinsettings.Readstring('singleplayer','playlisttextstr','1');
-    plset.equpleft:=skinsettings.Readinteger('eq','equpleft',0);
-    plset.equptop:=skinsettings.Readinteger('eq','equptop',0);
-    plset.eqdownleft:=skinsettings.Readinteger('eq','eqdownleft',0);
-    plset.eqdowntop:=skinsettings.Readinteger('eq','eqdowntop',0);
-    plset.eqftextleft:=skinsettings.Readinteger('eq','eqftextleft',0);
-    plset.eqftexttop:=skinsettings.Readinteger('eq','eqftexttop',0);
-    plset.eqztextleft:=skinsettings.Readinteger('eq','eqztextleft',0);
-    plset.eqztexttop:=skinsettings.Readinteger('eq','eqztexttop',0);
-    plset.eqsmeshX1:=skinsettings.Readinteger('eq','eqsmeshX1',0);
-    plset.eqsmeshX2:=skinsettings.Readinteger('eq','eqsmeshX2',0);
-    plset.eqsmeshY1:=skinsettings.Readinteger('eq','eqsmeshY1',0);
-    plset.efsmeshX1:=skinsettings.Readinteger('eq','efsmeshX1',0);
-    plset.efsmeshY1:=skinsettings.Readinteger('eq','efsmeshY1',0);
-    plset.eqcurgenleft:=skinsettings.Readstring('eq','eqcurgenleft','0');
-    plset.eqcurgentop:=skinsettings.Readinteger('eq','eqcurgentop',0);
-    plset.eqftextcolor:=skinsettings.Readinteger('eq','eqftextcolor',$FFFFFF);
-    plset.eqftextsize:=skinsettings.Readinteger('eq','eqftextsize',12);
-    plset.eqztextcolor:=skinsettings.Readinteger('eq','eqztextcolor',$FFFFFF);
-    plset.eqztextsize:=skinsettings.Readinteger('eq','eqztextsize',12);
-    plset.eqcurgencolor:=skinsettings.Readinteger('eq','eqcurgencolor',$FFFFFF);
-    plset.eqcurgensize:=skinsettings.Readinteger('eq','eqcurgensize',12);
-    plset.effectlampleft:=skinsettings.Readinteger('eq','effectlampleft',12);
-    plset.effectlamptop:=skinsettings.Readinteger('eq','effectlamptop',12);
-    plset.effectlampwidth:=skinsettings.Readinteger('eq','effectlampwidth',12);
-    plset.effectlampheight:=skinsettings.Readinteger('eq','effectlampheight',12);
-    plset.effectlampangleX:=skinsettings.Readinteger('eq','effectlampangleX',12);
-    plset.effectlampangleY:=skinsettings.Readinteger('eq','effectlampangleY',12);
-    plset.effectlampbordercoloroff:=skinsettings.Readinteger('eq','effectlampbordercoloroff',$FFFFFF);
-    plset.effectlampcoloroff:=skinsettings.Readinteger('eq','effectlampcoloroff',$FFFFFF);
-    plset.effectlampbordercoloron:=skinsettings.Readinteger('eq','effectlampbordercoloron',$FFFFFF);
-    plset.effectlampcoloron:=skinsettings.Readinteger('eq','effectlampcoloron',$FFFFFF);
-    plset.effectpagetextcolor:=skinsettings.Readinteger('eq','effectpagetextcolor',$FFFFFF);
-    plset.effectpagetextsize:=skinsettings.Readinteger('eq','effectpagetextsize',12);
-    plset.eqwgeelsmX:=skinsettings.Readinteger('eq','eqwgeelsmX',0);
-    plset.eqwgeelsmY:=skinsettings.Readinteger('eq','eqwgeelsmY',0);
-    plset.plsettextcolor:=skinsettings.Readinteger('singleplayer','plsettextcolor',$FFFFFF);
-    plset.plsetfillcolor:=skinsettings.Readinteger('singleplayer','plsetfillcolor',$FFFFFF);
-    plset.plsettextsize:=skinsettings.Readinteger('singleplayer','plsettextsize',16);
-    plset.plsettextleft:=skinsettings.Readinteger('singleplayer','plsettextleft',0);
-    plset.plsettexttop:=skinsettings.Readinteger('singleplayer','plsettexttop',0);
-    plset.plsettextsmw:=skinsettings.Readinteger('singleplayer','plsettextsmw',0);
-    plset.plsettextsmh:=skinsettings.Readinteger('singleplayer','plsettextsmh',0);
-    plset.plseticonsm:=skinsettings.Readinteger('singleplayer','plseticonsm',0);
-    plset.setchbsmh:=skinsettings.Readinteger('singleplayer','setchbsmh',0);
-    plset.bottomtree:=skinsettings.Readinteger('singleplayer','bottomtree',0);
-    plset.bottomsetka:=skinsettings.Readinteger('singleplayer','bottomsetka',0);
-    plset.maxrightsetka:=skinsettings.Readinteger('singleplayer','maxrightsetka',0);
-    plset.coverinplayerleft:=skinsettings.Readinteger('singleplayer','coverinplayerleft',0);
-    plset.coverinplayertop:=skinsettings.Readinteger('singleplayer','coverinplayertop',0);
-    plset.coverinzasleft:=skinsettings.Readinteger('singleplayer','coverinzasleft',0);
-    plset.coverinzastop:=skinsettings.Readinteger('singleplayer','coverinzastop',0);
-    plset.coverwidth:=skinsettings.Readinteger('singleplayer','coverwidth',0);
-    plset.coverheight:=skinsettings.Readinteger('singleplayer','coverheight',0);
-    plset.coverscrwidth:=skinsettings.Readinteger('singleplayer','coverscrwidth',0);
-    plset.coverscrheight:=skinsettings.Readinteger('singleplayer','coverscrheight',0);
-    plset.progressbarcolor:=skinsettings.Readinteger('singleplayer','progressbarcolor',0);
-    plset.progressbarfoncolor:=skinsettings.Readinteger('singleplayer','progressbarfoncolor',0);
-    plset.progressbarwidth:=skinsettings.Readinteger('singleplayer','progressbarwidth',0);
-    plset.progressbarleft:=skinsettings.Readinteger('singleplayer','progressbarleft',0);
-    plset.progressbartop:=skinsettings.Readinteger('singleplayer','progressbartop',0);
-    plset.progressbarheight:=skinsettings.Readinteger('singleplayer','progressbarheight',0);
-    plset.progressbarfonshow:=skinsettings.Readinteger('singleplayer','progressbarfonshow',1);
-    plset.progressbarshow:=skinsettings.Readinteger('singleplayer','progressbarshow',1);
-    plset.progressbarvir:=skinsettings.Readinteger('singleplayer','progressbarvir',0);
-    plset.sp1peekcolor:=skinsettings.Readinteger('singleplayer','sp1peekcolor',$00FF00);
-    plset.sp1barcolor:=skinsettings.Readinteger('singleplayer','sp1barcolor',$0000FF);
-    plset.sp1poscolor:=skinsettings.Readinteger('singleplayer','sp1poscolor',$FF0000);
-    plset.chbsetpole:=skinsettings.Readinteger('singleplayer','chbsetpole',450);
-    plset.bitratetrackcolor:=skinsettings.Readinteger('singleplayer','bitratetrackcolor',$FFFFFF);
-    plset.bitratetracksize:=skinsettings.Readinteger('singleplayer','bitratetracksize',12);
-    plset.bitratetrackleft:=skinsettings.Readstring('singleplayer','bitratetrackleft','0');
-    plset.bitratetracktop:=skinsettings.Readinteger('singleplayer','bitratetracktop',0);
-    plset.playlistkolltrack:=skinsettings.Readinteger('playlist','playlistkolltrack',9);
-    plset.plskolltrackinfoleft:=skinsettings.Readstring('playlist','plskolltrackinfoleft','0');
-    plset.plskolltrackinfotop:=skinsettings.Readinteger('playlist','plskolltrackinfotop',0);
-    plset.plskolltrackinfocolor:=skinsettings.Readinteger('playlist','plskolltrackinfocolor',$FFFFFF);
-    plset.plskolltrackinfosize:=skinsettings.Readinteger('playlist','plskolltrackinfosize',12);
-    plset.plspagesinfoleft:=skinsettings.Readstring('playlist','plspagesinfoleft','0');
-    plset.plspagesinfotop:=skinsettings.Readinteger('playlist','plspagesinfotop',0);
-    plset.plspagesinfocolor:=skinsettings.Readinteger('playlist','plspagesinfocolor',$FFFFFF);
-    plset.plspagesinfosize:=skinsettings.Readinteger('playlist','plspagesinfosize',12);
-    plset.playlisttextcolor:=skinsettings.Readinteger('playlist','playlisttextcolor',$FFFFFF);
-    plset.playlisttextsize:=skinsettings.Readinteger('playlist','playlisttextsize',16);
-    plset.playlisttextleft:=skinsettings.Readstring('playlist','playlisttextleft','0');
-    plset.playlisttexttop:=skinsettings.Readinteger('playlist','playlisttexttop',0);
-    plset.playlisttextncolor:=skinsettings.Readinteger('playlist','playlisttextncolor',$FFFFFF);
-    plset.playlisttextnsize:=skinsettings.Readinteger('playlist','playlisttextnsize',24);
-    plset.playlisttextnleft:=skinsettings.Readstring('playlist','playlisttextnleft','0');
-    plset.playlisttextntop:=skinsettings.Readinteger('playlist','playlisttextntop',0);
-    plset.playlistcurplscolor:=skinsettings.Readinteger('playlist','playlistcurplscolor',$FFFFFF);
-    plset.playlistcurplssize:=skinsettings.Readinteger('playlist','playlistcurplssize',16);
-    plset.playlistcurplsleft:=skinsettings.Readstring('playlist','playlistcurplsleft','0');
-    plset.playlistcurplstop:=skinsettings.Readinteger('playlist','playlistcurplstop',0);
-    plset.noticonpoleleft:=skinsettings.Readinteger('playlist','noticonpoleleft',1);
-    plset.noticonpolerigth:=skinsettings.Readinteger('playlist','noticonpolerigth',555);
-    plset.deldiskiconsm:=skinsettings.Readinteger('playlist','deldiskiconsm',0);
-    plset.deliconsm:=skinsettings.Readinteger('playlist','deliconsm',0);
-    plset.faviconsm:=skinsettings.Readinteger('playlist','faviconsm',0);
-    plset.downiconsm:=skinsettings.Readinteger('playlist','downiconsm',0);
-    plset.upiconsm:=skinsettings.Readinteger('playlist','upiconsm',0);
-    plset.trackvertsm:=skinsettings.Readinteger('playlist','trackvertsm',40);
-    plset.deldisktracktop:=skinsettings.Readinteger('playlist','deldisktracktop',-8);
-    plset.recttrackcolor:=skinsettings.Readinteger('playlist','recttrackcolor',$FFFFFF);
-    plset.deltracktop:=skinsettings.Readinteger('playlist','deltracktop',-8);
-    plset.favtracktop:=skinsettings.Readinteger('playlist','favtracktop',-8);
-    plset.downtracktop:=skinsettings.Readinteger('playlist','downtracktop',-8);
-    plset.uptracktop:=skinsettings.Readinteger('playlist','uptracktop',-8);
-    plset.vidtrackheight:=skinsettings.Readinteger('playlist','vidtrackheight',-6);
-    plset.vidtracktop:=skinsettings.Readinteger('playlist','vidtracktop',36);
-    plset.vidpltrackheight:=skinsettings.Readinteger('playlist','vidpltrackheight',-6);
-    plset.vidpltracktop:=skinsettings.Readinteger('playlist','vidpltracktop',36);
-    plset.vidpltrackleft:=skinsettings.Readinteger('playlist','vidpltrackleft',1);
-    plset.vidpltrackwidth:=skinsettings.Readinteger('playlist','vidpltrackwidth',799);
-    plset.vidtrackleft:=skinsettings.Readinteger('playlist','vidtrackleft',1);
-    plset.vidtrackwidth:=skinsettings.Readinteger('playlist','vidtrackwidth',799);
-    plset.vidplcolor:=skinsettings.Readinteger('playlist','vidplcolor',$0000FF);
-    plset.vidcolor:=skinsettings.Readinteger('playlist','vidcolor',$FFA500);
-    plset.spectr1left:=skinsettings.Readinteger('singleplayer','spectr1left',1);
-    plset.spectr1top:=skinsettings.Readinteger('singleplayer','spectr1top',1);
-    plset.spectr1width:=skinsettings.Readinteger('singleplayer','spectr1width',1);
-    plset.spectr1height:=skinsettings.Readinteger('singleplayer','spectr1height',1);
-    plset.spectr1kolbar:=skinsettings.Readinteger('singleplayer','spectr1kolbar',1);
-    plset.spectr1prbar:=skinsettings.Readinteger('singleplayer','spectr1prbar',1);
-    plset.spectr1widthbar:=skinsettings.Readinteger('singleplayer','spectr1widthbar',1);
-    plset.trackp:=skinsettings.Readinteger('singleplayer','trackp',1);
-    plset.vizpage:=skinsettings.Readstring('singleplayer','vizpage','');
-    plset.skinspistop:=skinsettings.Readinteger('singleplayer','skinspistop',1);
-    plset.skinspisleft:=skinsettings.Readinteger('singleplayer','skinspisleft',1);
-    plset.skinspisvertsm:=skinsettings.Readinteger('singleplayer','skinspisvertsm',1);
-    plset.skinspishorsm:=skinsettings.Readinteger('singleplayer','skinspishorsm',1);
-    plset.skinspisbottom:=skinsettings.Readinteger('singleplayer','skinspisbottom',800);
-    plset.scanfolderstrtextcolor:=skinsettings.Readinteger('singleplayer','scanfolderstrtextcolor',$FFFFFF);
-    plset.scanfolderstrtextsize:=skinsettings.Readinteger('singleplayer','scanfolderstrtextsize',16);
-    plset.scanfolderstrleft:=skinsettings.Readstring('singleplayer','scanfolderstrleft','0');
-    plset.scanfolderstrtop:=skinsettings.Readinteger('singleplayer','scanfolderstrtop',0);
+    plset.mainformwidth:=IniReadInteger(SP_SkinIniMas[0],'mainform','width',800);
+    plset.mainformheight:=IniReadInteger(SP_SkinIniMas[0],'mainform','height',480);
+    plset.mainformleft:=IniReadInteger(SP_SkinIniMas[0],'mainform','left',0);
+    plset.mainformtop:=IniReadInteger(SP_SkinIniMas[0],'mainform','top',0);
+    plset.treeleft:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treeleft',50);
+    plset.treetop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetop',50);
+    plset.treeleftsp:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treeleftsp',30);
+    plset.treetopsp:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetopsp',30);
+    plset.treetextsize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetextsize',10);
+    plset.treetextsizetree:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetextsizetree',16);
+    plset.treeintervalhorz:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treeintervalhorz',20);
+    plset.treeintervalvert:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treeintervalvert',20);
+    plset.maxrighttree:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','maxrighttree',780);
+    plset.textinterval:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','textinterval',2);
+    plset.treetype:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetype',0);
+    plset.treetextX:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetextX',0);
+    plset.treetextY:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetextY',0);
+    plset.treeintervalverttree:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treeintervalverttree',0);
+    plset.explorertextfolder:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','explorertextfolder',$FFFFFF);
+    plset.explorertextfiles:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','explorertextfiles',$FFFFFF);
+    plset.tracktimeleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','tracktimeleft','0');
+    plset.tracktimetop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','tracktimetop',0);
+    plset.tracktimecolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','tracktimecolor',$FFFFFF);
+    plset.tracktimesize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','tracktimesize',16);
+    plset.timetrackleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','timetrackleft','0');
+    plset.timetracktop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','timetracktop',0);
+    plset.timetrackcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','timetrackcolor',$FFFFFF);
+    plset.timetracksize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','timetracksize',12);
+    plset.tracktitleleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','tracktitleleft','0');
+    plset.tracktitlewidth:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','tracktitlewidth',0);
+    plset.tracktitletop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','tracktitletop',0);
+    plset.trackartisttitletop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','trackartisttitletop',0);
+    plset.tracktitlesize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','tracktitlesize',0);
+    plset.tracktitlecolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','tracktitlecolor',$FFFFFF);
+    plset.statustextleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','statustextleft','0');
+    plset.statustexttop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','statustexttop',0);
+    plset.statustextcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','statustextcolor',$FFFFFF);
+    plset.statustextsize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','statustextsize',16);
+    plset.playedtrackleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','playedtrackleft','0');
+    plset.playedtracktop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','playedtracktop',0);
+    plset.playedtrackcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','playedtrackcolor',0);
+    plset.playedtracksize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','playedtracksize',0);
+    plset.cureqleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','cureqleft','0');
+    plset.cureqtop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','cureqtop',0);
+    plset.cureqcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','cureqcolor',0);
+    plset.cureqsize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','cureqsize',0);
+    plset.curvolleft:=IniReadString(SP_SkinIniMas[0],'eq','curvolleft','0');
+    plset.curvoltop:=IniReadInteger(SP_SkinIniMas[0],'eq','curvoltop',0);
+    plset.curvolcolor:=IniReadInteger(SP_SkinIniMas[0],'eq','curvolcolor',0);
+    plset.curvolsize:=IniReadInteger(SP_SkinIniMas[0],'eq','curvolsize',0);
+    plset.curplsleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','curplsleft','0');
+    plset.curplstop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curplstop',0);
+    plset.curplscolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curplscolor',0);
+    plset.curplssize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curplssize',0);
+    plset.playerdatetimecolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','playerdatetimecolor',$FFFFFF);
+    plset.playerdatetimesize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','playerdatetimesize',16);
+    plset.playerdatetimeleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','playerdatetimeleft','0');
+    plset.playerdatetimetop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','playerdatetimetop',0);
+    plset.curentdircolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curentdircolor',$FFFFFF);
+    plset.curentdirsize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curentdirsize',24);
+    plset.curentdirleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','curentdirleft','0');
+    plset.curentdirtop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curentdirtop',0);
+    plset.curentdirplcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curentdirplcolor',$FFFFFF);
+    plset.curentdirplsize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curentdirplsize',24);
+    plset.curentdirplleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','curentdirplleft','0');
+    plset.curentdirpltop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','curentdirpltop',0);
+    plset.playlisttextr:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','playlisttextr',0);
+    plset.playlisttextstr:=IniReadString(SP_SkinIniMas[0],'singleplayer','playlisttextstr','1');
+    plset.equpleft:=IniReadInteger(SP_SkinIniMas[0],'eq','equpleft',0);
+    plset.equptop:=IniReadInteger(SP_SkinIniMas[0],'eq','equptop',0);
+    plset.eqdownleft:=IniReadInteger(SP_SkinIniMas[0],'eq','eqdownleft',0);
+    plset.eqdowntop:=IniReadInteger(SP_SkinIniMas[0],'eq','eqdowntop',0);
+    plset.eqftextleft:=IniReadInteger(SP_SkinIniMas[0],'eq','eqftextleft',0);
+    plset.eqftexttop:=IniReadInteger(SP_SkinIniMas[0],'eq','eqftexttop',0);
+    plset.eqztextleft:=IniReadInteger(SP_SkinIniMas[0],'eq','eqztextleft',0);
+    plset.eqztexttop:=IniReadInteger(SP_SkinIniMas[0],'eq','eqztexttop',0);
+    plset.eqsmeshX1:=IniReadInteger(SP_SkinIniMas[0],'eq','eqsmeshX1',0);
+    plset.eqsmeshX2:=IniReadInteger(SP_SkinIniMas[0],'eq','eqsmeshX2',0);
+    plset.eqsmeshY1:=IniReadInteger(SP_SkinIniMas[0],'eq','eqsmeshY1',0);
+    plset.efsmeshX1:=IniReadInteger(SP_SkinIniMas[0],'eq','efsmeshX1',0);
+    plset.efsmeshY1:=IniReadInteger(SP_SkinIniMas[0],'eq','efsmeshY1',0);
+    plset.eqcurgenleft:=IniReadString(SP_SkinIniMas[0],'eq','eqcurgenleft','0');
+    plset.eqcurgentop:=IniReadInteger(SP_SkinIniMas[0],'eq','eqcurgentop',0);
+    plset.eqftextcolor:=IniReadInteger(SP_SkinIniMas[0],'eq','eqftextcolor',$FFFFFF);
+    plset.eqftextsize:=IniReadInteger(SP_SkinIniMas[0],'eq','eqftextsize',12);
+    plset.eqztextcolor:=IniReadInteger(SP_SkinIniMas[0],'eq','eqztextcolor',$FFFFFF);
+    plset.eqztextsize:=IniReadInteger(SP_SkinIniMas[0],'eq','eqztextsize',12);
+    plset.eqcurgencolor:=IniReadInteger(SP_SkinIniMas[0],'eq','eqcurgencolor',$FFFFFF);
+    plset.eqcurgensize:=IniReadInteger(SP_SkinIniMas[0],'eq','eqcurgensize',12);
+    plset.effectlampleft:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampleft',12);
+    plset.effectlamptop:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlamptop',12);
+    plset.effectlampwidth:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampwidth',12);
+    plset.effectlampheight:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampheight',12);
+    plset.effectlampangleX:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampangleX',12);
+    plset.effectlampangleY:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampangleY',12);
+    plset.effectlampbordercoloroff:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampbordercoloroff',$FFFFFF);
+    plset.effectlampcoloroff:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampcoloroff',$FFFFFF);
+    plset.effectlampbordercoloron:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampbordercoloron',$FFFFFF);
+    plset.effectlampcoloron:=IniReadInteger(SP_SkinIniMas[0],'eq','effectlampcoloron',$FFFFFF);
+    plset.effectpagetextcolor:=IniReadInteger(SP_SkinIniMas[0],'eq','effectpagetextcolor',$FFFFFF);
+    plset.effectpagetextsize:=IniReadInteger(SP_SkinIniMas[0],'eq','effectpagetextsize',12);
+    plset.eqwgeelsmX:=IniReadInteger(SP_SkinIniMas[0],'eq','eqwgeelsmX',0);
+    plset.eqwgeelsmY:=IniReadInteger(SP_SkinIniMas[0],'eq','eqwgeelsmY',0);
+    plset.plsettextcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','plsettextcolor',$FFFFFF);
+    plset.plsetfillcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','plsetfillcolor',$FFFFFF);
+    plset.plsettextsize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','plsettextsize',16);
+    plset.plsettextleft:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','plsettextleft',0);
+    plset.plsettexttop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','plsettexttop',0);
+    plset.plsettextsmw:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','plsettextsmw',0);
+    plset.plsettextsmh:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','plsettextsmh',0);
+    plset.plseticonsm:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','plseticonsm',0);
+    plset.setchbsmh:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','setchbsmh',0);
+    plset.bottomtree:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','bottomtree',0);
+    plset.bottomsetka:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','bottomsetka',0);
+    plset.maxrightsetka:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','maxrightsetka',0);
+    plset.coverinplayerleft:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','coverinplayerleft',0);
+    plset.coverinplayertop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','coverinplayertop',0);
+    plset.coverinzasleft:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','coverinzasleft',0);
+    plset.coverinzastop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','coverinzastop',0);
+    plset.coverwidth:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','coverwidth',0);
+    plset.coverheight:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','coverheight',0);
+    plset.coverscrwidth:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','coverscrwidth',0);
+    plset.coverscrheight:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','coverscrheight',0);
+    plset.progressbarcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbarcolor',0);
+    plset.progressbarfoncolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbarfoncolor',0);
+    plset.progressbarwidth:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbarwidth',0);
+    plset.progressbarleft:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbarleft',0);
+    plset.progressbartop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbartop',0);
+    plset.progressbarheight:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbarheight',0);
+    plset.progressbarfonshow:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbarfonshow',1);
+    plset.progressbarshow:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbarshow',1);
+    plset.progressbarvir:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','progressbarvir',0);
+    plset.sp1peekcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','sp1peekcolor',$00FF00);
+    plset.sp1barcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','sp1barcolor',$0000FF);
+    plset.sp1poscolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','sp1poscolor',$FF0000);
+    plset.chbsetpole:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','chbsetpole',450);
+    plset.bitratetrackcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','bitratetrackcolor',$FFFFFF);
+    plset.bitratetracksize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','bitratetracksize',12);
+    plset.bitratetrackleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','bitratetrackleft','0');
+    plset.bitratetracktop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','bitratetracktop',0);
+    plset.playlistkolltrack:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlistkolltrack',9);
+    plset.plskolltrackinfoleft:=IniReadString(SP_SkinIniMas[0],'playlist','plskolltrackinfoleft','0');
+    plset.plskolltrackinfotop:=IniReadInteger(SP_SkinIniMas[0],'playlist','plskolltrackinfotop',0);
+    plset.plskolltrackinfocolor:=IniReadInteger(SP_SkinIniMas[0],'playlist','plskolltrackinfocolor',$FFFFFF);
+    plset.plskolltrackinfosize:=IniReadInteger(SP_SkinIniMas[0],'playlist','plskolltrackinfosize',12);
+    plset.plspagesinfoleft:=IniReadString(SP_SkinIniMas[0],'playlist','plspagesinfoleft','0');
+    plset.plspagesinfotop:=IniReadInteger(SP_SkinIniMas[0],'playlist','plspagesinfotop',0);
+    plset.plspagesinfocolor:=IniReadInteger(SP_SkinIniMas[0],'playlist','plspagesinfocolor',$FFFFFF);
+    plset.plspagesinfosize:=IniReadInteger(SP_SkinIniMas[0],'playlist','plspagesinfosize',12);
+    plset.playlisttextcolor:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlisttextcolor',$FFFFFF);
+    plset.playlisttextsize:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlisttextsize',16);
+    plset.playlisttextleft:=IniReadString(SP_SkinIniMas[0],'playlist','playlisttextleft','0');
+    plset.playlisttexttop:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlisttexttop',0);
+    plset.playlisttextncolor:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlisttextncolor',$FFFFFF);
+    plset.playlisttextnsize:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlisttextnsize',24);
+    plset.playlisttextnleft:=IniReadString(SP_SkinIniMas[0],'playlist','playlisttextnleft','0');
+    plset.playlisttextntop:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlisttextntop',0);
+    plset.playlistcurplscolor:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlistcurplscolor',$FFFFFF);
+    plset.playlistcurplssize:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlistcurplssize',16);
+    plset.playlistcurplsleft:=IniReadString(SP_SkinIniMas[0],'playlist','playlistcurplsleft','0');
+    plset.playlistcurplstop:=IniReadInteger(SP_SkinIniMas[0],'playlist','playlistcurplstop',0);
+    plset.noticonpoleleft:=IniReadInteger(SP_SkinIniMas[0],'playlist','noticonpoleleft',1);
+    plset.noticonpolerigth:=IniReadInteger(SP_SkinIniMas[0],'playlist','noticonpolerigth',555);
+    plset.deldiskiconsm:=IniReadInteger(SP_SkinIniMas[0],'playlist','deldiskiconsm',0);
+    plset.deliconsm:=IniReadInteger(SP_SkinIniMas[0],'playlist','deliconsm',0);
+    plset.faviconsm:=IniReadInteger(SP_SkinIniMas[0],'playlist','faviconsm',0);
+    plset.downiconsm:=IniReadInteger(SP_SkinIniMas[0],'playlist','downiconsm',0);
+    plset.upiconsm:=IniReadInteger(SP_SkinIniMas[0],'playlist','upiconsm',0);
+    plset.trackvertsm:=IniReadInteger(SP_SkinIniMas[0],'playlist','trackvertsm',40);
+    plset.deldisktracktop:=IniReadInteger(SP_SkinIniMas[0],'playlist','deldisktracktop',-8);
+    plset.recttrackcolor:=IniReadInteger(SP_SkinIniMas[0],'playlist','recttrackcolor',$FFFFFF);
+    plset.deltracktop:=IniReadInteger(SP_SkinIniMas[0],'playlist','deltracktop',-8);
+    plset.favtracktop:=IniReadInteger(SP_SkinIniMas[0],'playlist','favtracktop',-8);
+    plset.downtracktop:=IniReadInteger(SP_SkinIniMas[0],'playlist','downtracktop',-8);
+    plset.uptracktop:=IniReadInteger(SP_SkinIniMas[0],'playlist','uptracktop',-8);
+    plset.vidtrackheight:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidtrackheight',-6);
+    plset.vidtracktop:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidtracktop',36);
+    plset.vidpltrackheight:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidpltrackheight',-6);
+    plset.vidpltracktop:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidpltracktop',36);
+    plset.vidpltrackleft:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidpltrackleft',1);
+    plset.vidpltrackwidth:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidpltrackwidth',799);
+    plset.vidtrackleft:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidtrackleft',1);
+    plset.vidtrackwidth:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidtrackwidth',799);
+    plset.vidplcolor:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidplcolor',$0000FF);
+    plset.vidcolor:=IniReadInteger(SP_SkinIniMas[0],'playlist','vidcolor',$FFA500);
+    plset.spectr1left:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','spectr1left',1);
+    plset.spectr1top:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','spectr1top',1);
+    plset.spectr1width:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','spectr1width',1);
+    plset.spectr1height:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','spectr1height',1);
+    plset.spectr1kolbar:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','spectr1kolbar',1);
+    plset.spectr1prbar:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','spectr1prbar',1);
+    plset.spectr1widthbar:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','spectr1widthbar',1);
+    plset.trackp:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','trackp',1);
+    plset.vizpage:=IniReadString(SP_SkinIniMas[0],'singleplayer','vizpage','');
+    plset.skinspistop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','skinspistop',1);
+    plset.skinspisleft:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','skinspisleft',1);
+    plset.skinspisvertsm:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','skinspisvertsm',1);
+    plset.skinspishorsm:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','skinspishorsm',1);
+    plset.skinspisbottom:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','skinspisbottom',800);
+    plset.scanfolderstrtextcolor:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','scanfolderstrtextcolor',$FFFFFF);
+    plset.scanfolderstrtextsize:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','scanfolderstrtextsize',16);
+    plset.scanfolderstrleft:=IniReadString(SP_SkinIniMas[0],'singleplayer','scanfolderstrleft','0');
+    plset.scanfolderstrtop:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','scanfolderstrtop',0);
 
-    plset.xkey:=skinsettings.Readinteger('keyboard','xkey',0);
-    plset.ykey:=skinsettings.Readinteger('keyboard','ykey',0);
-    plset.keywidth:=skinsettings.Readinteger('keyboard','keywidth',0);
-    plset.keyheight:=skinsettings.Readinteger('keyboard','keyheight',0);
-    plset.keyras:=skinsettings.Readinteger('keyboard','keyras',0);
-    plset.nextryad:=skinsettings.Readinteger('keyboard','nextryad',0);
-    plset.keyboardcolor:=skinsettings.Readinteger('keyboard','keyboardcolor',$000000);
-    plset.keyboardbordercolor:=skinsettings.Readinteger('keyboard','keyboardbordercolor',$0000FF);
-    plset.keycolor:=skinsettings.Readinteger('keyboard','keycolor',$000000);
-    plset.keybordercolor:=skinsettings.Readinteger('keyboard','keybordercolor',$0000FF);
-    plset.maxkeysinryad:=skinsettings.Readinteger('keyboard','maxkeysinryad',10);
-    plset.maxkolryad:=skinsettings.Readinteger('keyboard','maxkolryad',3);
-    plset.wordleft:=skinsettings.Readinteger('keyboard','wordleft',15);
-    plset.wordtop:=skinsettings.Readinteger('keyboard','wordtop',10);
-    plset.tracksearchbordercolor:=skinsettings.Readinteger('keyboard','tracksearchbordercolor',$FFFFFF);
-    plset.tracksearchcolor:=skinsettings.Readinteger('keyboard','tracksearchcolor',$FFFFFF);
-    plset.tracksearchtextcolor:=skinsettings.Readinteger('keyboard','tracksearchtextcolor',$FFFFFF);
-    plset.tracksearchleft:=skinsettings.Readinteger('keyboard','tracksearchleft',0);
-    plset.tracksearchpoleheight:=skinsettings.Readinteger('keyboard','tracksearchpoleheight',0);
-    plset.tracksearchpoleleft:=skinsettings.Readinteger('keyboard','tracksearchpoleleft',0);
-    plset.tracksearchpoletop:=skinsettings.Readinteger('keyboard','tracksearchpoletop',0);
-    plset.tracksearchpolewidth:=skinsettings.Readinteger('keyboard','tracksearchpolewidth',0);
-    plset.tracksearchtextsize:=skinsettings.Readinteger('keyboard','tracksearchtextsize',0);
-    plset.tracksearchtop:=skinsettings.Readinteger('keyboard','tracksearchtop',0);
-    plset.topfind:=skinsettings.Readinteger('keyboard','topfind',0);
-    plset.bottomfind:=skinsettings.Readinteger('keyboard','bottomfind',0);
-    plset.leftfind:=skinsettings.Readinteger('keyboard','leftfind',0);
-    plset.vertrasfind:=skinsettings.Readinteger('keyboard','vertrasfind',0);
-    plset.searchrespolebottom:=skinsettings.Readinteger('keyboard','searchrespolebottom',0);
-    plset.searchrespoletop:=skinsettings.Readinteger('keyboard','searchrespoletop',0);
-    plset.searchrespoleleft:=skinsettings.Readinteger('keyboard','searchrespoleleft',0);
-    plset.searchrespoleright:=skinsettings.Readinteger('keyboard','searchrespoleright',0);
-    plset.searchresenterpolebordercolor:=skinsettings.Readinteger('keyboard','searchresenterpolebordercolor',0);
-    plset.searchresenterpolecolor:=skinsettings.Readinteger('keyboard','searchresenterpolecolor',0);
-    plset.searchresentertextcolor:=skinsettings.Readinteger('keyboard','searchresentertextcolor',0);
-    plset.searchresentertextsize:=skinsettings.Readinteger('keyboard','searchresentertextsize',0);
-    plset.topochered:=skinsettings.Readinteger('keyboard','topochered',0);
-    plset.bottomochered:=skinsettings.Readinteger('keyboard','bottomochered',0);
-    plset.ocheredbordercolor:=skinsettings.Readinteger('keyboard','ocheredbordercolor',$0000FF);
-    plset.ocheredcolor:=skinsettings.Readinteger('keyboard','ocheredcolor',$000000);
-    plset.ocheredtextcolor:=skinsettings.Readinteger('keyboard','ocheredtextcolor',$FFFFFF);
-    plset.ocheredtextsize:=skinsettings.Readinteger('keyboard','ocheredtextsize',15);
-    plset.ocheredstrtextsize:=skinsettings.Readinteger('keyboard','ocheredstrtextsize',15);
-    plset.ocheredstrtextcolor:=skinsettings.Readinteger('keyboard','ocheredstrtextcolor',$FFFFFF);
-    plset.ocheredstrleft:=skinsettings.Readinteger('keyboard','ocheredstrleft',0);
-    plset.ocheredstrtop:=skinsettings.Readinteger('keyboard','ocheredstrtop',0);
-    plset.srcstrtextsize:=skinsettings.Readinteger('keyboard','srcstrtextsize',15);
-    plset.srcstrtextcolor:=skinsettings.Readinteger('keyboard','srcstrtextcolor',$FFFFFF);
-    plset.srcstrleft:=skinsettings.Readinteger('keyboard','srcstrleft',0);
-    plset.srcstrtop:=skinsettings.Readinteger('keyboard','srcstrtop',0);
-    plset.keyboardleft:=skinsettings.Readinteger('keyboard','keyboardleft',0);
-    plset.keyboardtop:=skinsettings.Readinteger('keyboard','keyboardtop',0);
-    plset.keyboardwidth:=skinsettings.Readinteger('keyboard','keyboardwidth',0);
-    plset.keyboardheight:=skinsettings.Readinteger('keyboard','keyboardheight',0);
-    plset.keytextcolor:=skinsettings.Readinteger('keyboard','keytextcolor',$FFFFFF);
-    plset.keytextsize:=skinsettings.Readinteger('keyboard','keytextsize',0);
-    plset.searchresbordercolor:=skinsettings.Readinteger('keyboard','searchresbordercolor',$0000FF);
-    plset.searchrescolor:=skinsettings.Readinteger('keyboard','searchrescolor',$000000);
-    plset.searchrestextcolor:=skinsettings.Readinteger('keyboard','searchrestextcolor',$FFFFFF);
-    plset.searchrestextsize:=skinsettings.Readinteger('keyboard','searchrestextsize',0);
-    plset.scanstatustextcolor:=skinsettings.Readinteger('keyboard','scanstatustextcolor',$FFFFFF);
-    plset.scanstatustextleft:=skinsettings.Readinteger('keyboard','scanstatustextleft',0);
-    plset.scanstatustextsize:=skinsettings.Readinteger('keyboard','scanstatustextsize',15);
-    plset.scanstatustexttop:=skinsettings.Readinteger('keyboard','scanstatustexttop',0);
+    plset.xkey:=IniReadInteger(SP_SkinIniMas[0],'keyboard','xkey',0);
+    plset.ykey:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ykey',0);
+    plset.keywidth:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keywidth',0);
+    plset.keyheight:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keyheight',0);
+    plset.keyras:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keyras',0);
+    plset.nextryad:=IniReadInteger(SP_SkinIniMas[0],'keyboard','nextryad',0);
+    plset.keyboardcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keyboardcolor',$000000);
+    plset.keyboardbordercolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keyboardbordercolor',$0000FF);
+    plset.keycolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keycolor',$000000);
+    plset.keybordercolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keybordercolor',$0000FF);
+    plset.maxkeysinryad:=IniReadInteger(SP_SkinIniMas[0],'keyboard','maxkeysinryad',10);
+    plset.maxkolryad:=IniReadInteger(SP_SkinIniMas[0],'keyboard','maxkolryad',3);
+    plset.wordleft:=IniReadInteger(SP_SkinIniMas[0],'keyboard','wordleft',15);
+    plset.wordtop:=IniReadInteger(SP_SkinIniMas[0],'keyboard','wordtop',10);
+    plset.tracksearchbordercolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchbordercolor',$FFFFFF);
+    plset.tracksearchcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchcolor',$FFFFFF);
+    plset.tracksearchtextcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchtextcolor',$FFFFFF);
+    plset.tracksearchleft:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchleft',0);
+    plset.tracksearchpoleheight:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchpoleheight',0);
+    plset.tracksearchpoleleft:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchpoleleft',0);
+    plset.tracksearchpoletop:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchpoletop',0);
+    plset.tracksearchpolewidth:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchpolewidth',0);
+    plset.tracksearchtextsize:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchtextsize',0);
+    plset.tracksearchtop:=IniReadInteger(SP_SkinIniMas[0],'keyboard','tracksearchtop',0);
+    plset.topfind:=IniReadInteger(SP_SkinIniMas[0],'keyboard','topfind',0);
+    plset.bottomfind:=IniReadInteger(SP_SkinIniMas[0],'keyboard','bottomfind',0);
+    plset.leftfind:=IniReadInteger(SP_SkinIniMas[0],'keyboard','leftfind',0);
+    plset.vertrasfind:=IniReadInteger(SP_SkinIniMas[0],'keyboard','vertrasfind',0);
+    plset.searchrespolebottom:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchrespolebottom',0);
+    plset.searchrespoletop:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchrespoletop',0);
+    plset.searchrespoleleft:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchrespoleleft',0);
+    plset.searchrespoleright:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchrespoleright',0);
+    plset.searchresenterpolebordercolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchresenterpolebordercolor',0);
+    plset.searchresenterpolecolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchresenterpolecolor',0);
+    plset.searchresentertextcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchresentertextcolor',0);
+    plset.searchresentertextsize:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchresentertextsize',0);
+    plset.topochered:=IniReadInteger(SP_SkinIniMas[0],'keyboard','topochered',0);
+    plset.bottomochered:=IniReadInteger(SP_SkinIniMas[0],'keyboard','bottomochered',0);
+    plset.ocheredbordercolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ocheredbordercolor',$0000FF);
+    plset.ocheredcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ocheredcolor',$000000);
+    plset.ocheredtextcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ocheredtextcolor',$FFFFFF);
+    plset.ocheredtextsize:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ocheredtextsize',15);
+    plset.ocheredstrtextsize:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ocheredstrtextsize',15);
+    plset.ocheredstrtextcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ocheredstrtextcolor',$FFFFFF);
+    plset.ocheredstrleft:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ocheredstrleft',0);
+    plset.ocheredstrtop:=IniReadInteger(SP_SkinIniMas[0],'keyboard','ocheredstrtop',0);
+    plset.srcstrtextsize:=IniReadInteger(SP_SkinIniMas[0],'keyboard','srcstrtextsize',15);
+    plset.srcstrtextcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','srcstrtextcolor',$FFFFFF);
+    plset.srcstrleft:=IniReadInteger(SP_SkinIniMas[0],'keyboard','srcstrleft',0);
+    plset.srcstrtop:=IniReadInteger(SP_SkinIniMas[0],'keyboard','srcstrtop',0);
+    plset.keyboardleft:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keyboardleft',0);
+    plset.keyboardtop:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keyboardtop',0);
+    plset.keyboardwidth:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keyboardwidth',0);
+    plset.keyboardheight:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keyboardheight',0);
+    plset.keytextcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keytextcolor',$FFFFFF);
+    plset.keytextsize:=IniReadInteger(SP_SkinIniMas[0],'keyboard','keytextsize',0);
+    plset.searchresbordercolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchresbordercolor',$0000FF);
+    plset.searchrescolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchrescolor',$000000);
+    plset.searchrestextcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchrestextcolor',$FFFFFF);
+    plset.searchrestextsize:=IniReadInteger(SP_SkinIniMas[0],'keyboard','searchrestextsize',0);
+    plset.scanstatustextcolor:=IniReadInteger(SP_SkinIniMas[0],'keyboard','scanstatustextcolor',$FFFFFF);
+    plset.scanstatustextleft:=IniReadInteger(SP_SkinIniMas[0],'keyboard','scanstatustextleft',0);
+    plset.scanstatustextsize:=IniReadInteger(SP_SkinIniMas[0],'keyboard','scanstatustextsize',15);
+    plset.scanstatustexttop:=IniReadInteger(SP_SkinIniMas[0],'keyboard','scanstatustexttop',0);
 
 {------------------------------------------------------------------------------}
 
 {-------------------------------- параметры иконок скина ----------------------}
     for i:=1 to allicons do
      begin
-      seticons[i].caption:=skinsettings.ReadString('icon'+inttostr(i),'caption','');
+      seticons[i].caption:=IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'caption','');
 
-        if pos('#~',skinsettings.ReadString('icon'+inttostr(i),'text',''))=0 then
-        seticons[i].text:=skinsettings.ReadString('icon'+inttostr(i),'text','') else
+        if pos('#~',ansitoutf8(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'text','')))=0 then
+        seticons[i].text:=ansitoutf8(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'text','')) else
          begin
-          seticons[i].text:=skinsettings.ReadString('icon'+inttostr(i),'text','');
+          seticons[i].text:=ansitoutf8(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'text',''));
           while pos('#~',seticons[i].text)<>0 do seticons[i].text:=replacestr(seticons[i].text,copy(seticons[i].text,pos('#~',seticons[i].text),pos('~#',seticons[i].text)+2-pos('#~',seticons[i].text)),getfromlangpack(copy(seticons[i].text,pos('#~',seticons[i].text),pos('~#',seticons[i].text)+2-pos('#~',seticons[i].text))));
          end;
 
-      seticons[i].textleft:=skinsettings.Readstring('icon'+inttostr(i),'textleft','0');
-      seticons[i].texttop:=skinsettings.Readinteger('icon'+inttostr(i),'texttop',0);
-      seticons[i].textsize:=skinsettings.Readinteger('icon'+inttostr(i),'textsize',0);
-      seticons[i].textcolor:=skinsettings.Readinteger('icon'+inttostr(i),'textcolor',$FFFFFF);
-      seticons[i].textcolorclick:=skinsettings.Readinteger('icon'+inttostr(i),'textcolorclick',$FFFF00);
-      seticons[i].textautosize:=lowercase(skinsettings.Readstring('icon'+inttostr(i),'textautosize','false'));
-      seticons[i].maxright:=skinsettings.Readinteger('icon'+inttostr(i),'maxright',800);
-      seticons[i].minleft:=skinsettings.Readinteger('icon'+inttostr(i),'minleft',0);
-      seticons[i].width:=skinsettings.ReadInteger('icon'+inttostr(i),'width',134);
-      seticons[i].height:=skinsettings.ReadInteger('icon'+inttostr(i),'height',134);
-      seticons[i].left:=skinsettings.ReadInteger('icon'+inttostr(i),'left',16);
-      seticons[i].top:=skinsettings.ReadInteger('icon'+inttostr(i),'top',16);
-      seticons[i].typeicon:=lowercase(skinsettings.Readstring('icon'+inttostr(i),'typeicon','buffer'));
-      seticons[i].exec:=lowercase(skinsettings.Readstring('icon'+inttostr(i),'exec',''));
-      seticons[i].execopt:=lowercase(skinsettings.Readstring('icon'+inttostr(i),'execopt',''));
-      seticons[i].visible:=lowercase(skinsettings.Readstring('icon'+inttostr(i),'visible','false'));
-      seticons[i].clickiconcaption:=lowercase(skinsettings.ReadString('icon'+inttostr(i),'clickiconcaption',''));
-      seticons[i].textbold:=lowercase(skinsettings.ReadString('icon'+inttostr(i),'textbold','false'));
-      seticons[i].textitalic:=lowercase(skinsettings.ReadString('icon'+inttostr(i),'textitalic','false'));
-      seticons[i].Zpriority:=skinsettings.ReadInteger('icon'+inttostr(i),'Zpriority',0);
+      seticons[i].textleft:=IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'textleft','0');
+      seticons[i].texttop:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'texttop',0);
+      seticons[i].textsize:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'textsize',0);
+      seticons[i].textcolor:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'textcolor',$FFFFFF);
+      seticons[i].textcolorclick:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'textcolorclick',$FFFF00);
+      seticons[i].textautosize:=lowercase(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'textautosize','false'));
+      seticons[i].maxright:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'maxright',800);
+      seticons[i].minleft:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'minleft',0);
+      seticons[i].width:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'width',134);
+      seticons[i].height:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'height',134);
+      seticons[i].left:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'left',16);
+      seticons[i].top:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'top',16);
+      seticons[i].typeicon:=lowercase(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'typeicon','buffer'));
+      seticons[i].exec:=lowercase(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'exec',''));
+      seticons[i].execopt:=lowercase(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'execopt',''));
+      seticons[i].visible:=lowercase(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'visible','false'));
+      seticons[i].clickiconcaption:=lowercase(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'clickiconcaption',''));
+      seticons[i].textbold:=lowercase(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'textbold','false'));
+      seticons[i].textitalic:=lowercase(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'textitalic','false'));
+      seticons[i].Zpriority:=IniReadInteger(SP_SkinIniMas[i],'icon'+inttostr(i),'Zpriority',0);
      end;
 {------------------------------------------------------------------------------}
     kollraskl:=0;
     for i:=1 to maxraskl do
      begin
-      if skinsettings.SectionExists('keymode'+inttostr(i)) then
-       begin
+      IniSelectSection(SP_SkinIniMas[0],'keymode'+inttostr(i),ISt,IEnd);
+      if (ISt>0) then
+      begin
         inc(kollraskl);
-        for j:=1 to maxkeys do keysmass[j,i]:=skinsettings.ReadString('keymode'+inttostr(i),inttostr(j),'');
-       end;
+        for j:=1 to maxkeys do keysmass[j,i]:=ansitoutf8(IniReadString(SP_SkinIniMas[0],'keymode'+inttostr(i),inttostr(j),'',ISt,IEnd));
+      end;
      end;
+
     end else
     begin
     for i:=1 to allicons do
      begin
-      if pos('#~',skinsettings.ReadString('icon'+inttostr(i),'text',''))=0 then
-      seticons[i].text:=skinsettings.ReadString('icon'+inttostr(i),'text','') else
+      if pos('#~',ansitoutf8(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'text','')))=0 then
+      seticons[i].text:=ansitoutf8(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'text','')) else
        begin
-        seticons[i].text:=skinsettings.ReadString('icon'+inttostr(i),'text','');
+        seticons[i].text:=ansitoutf8(IniReadString(SP_SkinIniMas[i],'icon'+inttostr(i),'text',''));
         while pos('#~',seticons[i].text)<>0 do seticons[i].text:=replacestr(seticons[i].text,copy(seticons[i].text,pos('#~',seticons[i].text),pos('~#',seticons[i].text)+2-pos('#~',seticons[i].text)),getfromlangpack(copy(seticons[i].text,pos('#~',seticons[i].text),pos('~#',seticons[i].text)+2-pos('#~',seticons[i].text))));
        end;
+
      end;
     end;
 
     end else
     begin
-     LogAndExitPlayer('Католог скина имеет неверную структуру' + SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\skcfg.cfg',0,0);
+     LogAndExitPlayer('Каталог скина имеет неверную структуру' + SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\skcfg.cfg',0,0);
      AllowStartPlayer:=0;
-     exit;
     end;
   except
     LogAndExitPlayer('Ошибка при загрузке скина ' + SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\skcfg.cfg',0,0);
     AllowStartPlayer:=0;
-    exit;
   end;
+  for i:=1 to allicons do SetLength(SP_SkinIniMas[i],0);
   end;
 
 procedure LoadIconPlayer;
@@ -4400,22 +4413,29 @@ var
 begin
 try
 loadiconkl:=1;
+
 for i:=1 to allicons do
  begin
-    if (seticons[i].caption<>'') and (pos('.jpg',seticons[i].caption)<>0)  then
+    if (seticons[i].caption<>'') and (pos('.bmp',seticons[i].caption)<>0)  then
      begin
-        playericon[i]:= TJPEGImage.Create;
+     {  Загрузка картинок с диска}
+        playericon[i]:= graphics.tbitmap.Create;
+
         playericon[i].Width  := seticons[i].width;
         playericon[i].Height := seticons[i].height;
-        playericon[i].LoadFromFile(UTF8Encode(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin)+'\Icons\'+seticons[i].caption);
+        playericon[i].handle:=LoadBMP(ansitoutf8(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin)+'\Icons\'+seticons[i].caption);
+
      end;
     if seticons[i].clickiconcaption<>'' then
      begin
-      clickplayericon[i]:= TJPEGImage.Create;
+      clickplayericon[i]:= graphics.tbitmap.Create;
+
       clickplayericon[i].Width  := seticons[i].width;
       clickplayericon[i].Height := seticons[i].height;
-      clickplayericon[i].LoadFromFile(UTF8Encode(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin)+'\Icons\'+seticons[i].clickiconcaption);
+      clickplayericon[i].handle:=LoadBMP(ansitoutf8(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin)+'\Icons\'+seticons[i].clickiconcaption);
+
      end;
+
     if (SinglePlayerSettings.logmode=1) and (seticons[i].caption<>'') then BigLog('Иконка '+seticons[i].caption+' секции '+inttostr(i)+' успешно загружена');
  end;
 loadiconkl:=0;
@@ -4425,6 +4445,7 @@ except
   AllowStartPlayer:=0;
   exit;
 end;
+
 end;
 
 procedure paintplayericon(cpg:string);
@@ -4454,7 +4475,7 @@ try
 
        if seticons[i].visible='true' then
         begin
-         if (seticons[i].caption<>'') and (pos('.jpg',seticons[i].caption)<>0) then SinglePlayerGUI.Canvas.Draw(seticons[i].left, seticons[i].top, playericon[i]);
+         if (seticons[i].caption<>'') and (pos('.bmp',seticons[i].caption)<>0) then SinglePlayerGUI.Canvas.Draw(seticons[i].left, seticons[i].top, playericon[i]);
          if seticons[i].text<>'' then
           begin
            textformsize:=SinglePlayerGUI.Canvas.Font.Size;
@@ -4510,7 +4531,7 @@ try
 
        if seticons[i].visible='true' then
         begin
-         if (seticons[i].caption<>'') and (pos('.jpg',seticons[i].caption)<>0) then SinglePlayerGUI.Canvas.Draw(seticons[i].left, seticons[i].top, playericon[i]);
+         if (seticons[i].caption<>'') and (pos('.bmp',seticons[i].caption)<>0) then SinglePlayerGUI.Canvas.Draw(seticons[i].left, seticons[i].top, playericon[i]);
          if seticons[i].text<>'' then
           begin
            textformsize:=SinglePlayerGUI.Canvas.Font.Size;
@@ -4660,16 +4681,16 @@ try
 
   if (mode=play) or (mode=radioplay) then
    begin
-    setvisfromname('btplay.jpg','false');
-    setvisfromname('btstop.jpg','true');
-    setvisfromname('plsplay.jpg','false');
-    setvisfromname('plsstop.jpg','true');
+    setvisfromname('btplay.bmp','false');
+    setvisfromname('btstop.bmp','true');
+    setvisfromname('plsplay.bmp','false');
+    setvisfromname('plsstop.bmp','true');
    end else
    begin
-    setvisfromname('btplay.jpg','true');
-    setvisfromname('btstop.jpg','false');
-    setvisfromname('plsplay.jpg','true');
-    setvisfromname('plsstop.jpg','false');
+    setvisfromname('btplay.bmp','true');
+    setvisfromname('btstop.bmp','false');
+    setvisfromname('plsplay.bmp','true');
+    setvisfromname('plsstop.bmp','false');
    end;
 
   if singleplayersettings.playallpls=0 then
@@ -5019,8 +5040,8 @@ result:=str;
 if str<>'' then
  begin
   case str of
-   '%track%': begin result:=delbanner(artist+' - '+title);  exit; end;
-   '%radiobuffering%': begin if progress>0 then result:=getfromlangpack('buffering')+' '+UTF8Encode(inttostr(Progress)+'%') else result:='';  exit; end;
+   '%track%': begin result:=ansitoutf8(delbanner(artist+' - '+title));  exit; end;
+   '%radiobuffering%': begin if progress>0 then result:=getfromlangpack('buffering')+' '+ansitoutf8(inttostr(Progress)+'%') else result:='';  exit; end;
    '%playervol%': begin result:=realtostr(SinglePlayerSettings.curentvol,0); exit; end;
    '%playfolder%': begin result:=curpldir; exit; end;
    '%curbitrate%': begin result:=bitratestr; exit; end;
@@ -5032,8 +5053,8 @@ if str<>'' then
    '%kolltrack%': begin result:=inttostr(SinglePlayerSettings.kolltrack); exit; end;
    '%skinname%': begin result:=SinglePlayerSettings.skin; exit; end;
    '%curpage%': begin result:=curentpage; exit; end;
-   '%artisttrack%': begin result:=delbanner(artist); exit; end;
-   '%titletrack%': begin result:=delbanner(title); exit; end;
+   '%artisttrack%': begin result:=ansitoutf8(delbanner(artist)); exit; end;
+   '%titletrack%': begin result:=ansitoutf8(delbanner(title)); exit; end;
    '%curentdir%': begin result:=curentdir; exit; end;
    '%playfile%': begin result:=curenttrack; exit; end;
    '%curplaylistpage%': begin result:=inttostr(pageindex); exit; end;
@@ -5043,10 +5064,10 @@ if str<>'' then
    '%time%': begin result:=timeinicon; exit; end;
    '%date%': begin result:=dateinicon; exit; end;
    '%conradiostr%': begin result:=conradiostr; exit; end;
-   '%genreintrack%': begin result:=UTF8Encode(thisTagv2.Genre); exit; end;
-   '%albumintrack%': begin result:=UTF8Encode(thisTagv2.Album); exit; end;
-   '%yearintrack%': begin result:=UTF8Encode(thisTagv2.Year); exit; end;
-   '%commentintrack%': begin result:=UTF8Encode(thisTagv2.Comment); exit; end;
+   '%genreintrack%': begin result:=ansitoutf8(thisTagv2.Genre); exit; end;
+   '%albumintrack%': begin result:=ansitoutf8(thisTagv2.Album); exit; end;
+   '%yearintrack%': begin result:=ansitoutf8(thisTagv2.Year); exit; end;
+   '%commentintrack%': begin result:=ansitoutf8(thisTagv2.Comment); exit; end;
    '%curentsysvol%': begin  result:=inttostr(SinglePlayerSettings.curentsysvol); exit; end;
    '%radioconnect%': begin  if (connecting<>0) and (progress<1) then result:=getfromlangpack('connectiradio')+' '+inttostr(radioerror) else result:=''; exit; end;
    '%effectpage%': begin
@@ -5336,6 +5357,7 @@ try
  result:=0;
  for i:=1 to allicons do
   begin
+   if seticons[i].caption='' then continue;
    if seticons[i].caption=iconcaption then result:=i;
   end;
 except
@@ -5353,6 +5375,7 @@ try
  result:=0;
  for i:=1 to allicons do
   begin
+   if seticons[i].exec='' then continue;
    if seticons[i].exec=iconexec then result:=i;
   end;
 except
@@ -5369,6 +5392,7 @@ try
  result:=0;
  for i:=1 to allicons do
   begin
+   if seticons[i].execopt='' then continue;
    if seticons[i].execopt=iconexecopt then result:=i;
   end;
 except
@@ -5385,6 +5409,7 @@ try
  result:=0;
  for i:=1 to allicons do
   begin
+   if seticons[i].text='' then continue;
    if seticons[i].text=texticon then result:=i;
   end;
 except
@@ -5401,6 +5426,7 @@ try
  result:='good';
  for i:=1 to allicons do
   begin
+   if seticons[i].exec='' then continue;
    if seticons[i].exec=iconexec then seticons[i].visible:=vis;
   end;
 except
@@ -5417,6 +5443,7 @@ try
  result:='good';
  for i:=1 to allicons do
   begin
+   if seticons[i].execopt='' then continue;
    if seticons[i].execopt=iconexecopt then seticons[i].visible:=vis;
   end;
 except
@@ -5433,6 +5460,7 @@ try
  result:='good';
  for i:=1 to allicons do
   begin
+   if seticons[i].caption='' then continue;
    if seticons[i].caption=iconname then seticons[i].visible:=vis;
   end;
 except
@@ -5560,22 +5588,22 @@ begin
    begin
     pr2:=0;
     pr4:=0;
-    if SinglePlayerGUI.Canvas.TextWidth(artisttitle)>plset.tracktitlewidth then
+    if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))>plset.tracktitlewidth then
      begin
      if SinglePlayerSettings.track2str=0 then scrolltitle:=delbanner(artist+title) else scrolltitle:=delbanner(artist);
       artisttitle:='';
-      for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(artisttitle)<=plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
+      for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))<=plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
      end;
 
      if SinglePlayerSettings.track2str=1 then
       begin
        pr2:=0;
        pr4:=0;
-        if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))>plset.tracktitlewidth then
+        if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))>plset.tracktitlewidth then
          begin
           scrolltitle2:=delbanner(title);
           scrolltitlestr:='';
-          for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))<=plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
+          for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))<=plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
          end;
        end;
      end;
@@ -5598,39 +5626,39 @@ if curentpage='singleplayer' then
 if SinglePlayerSettings.scrolltrack=1 then
 begin
 
-if SinglePlayerGUI.Canvas.TextWidth(artisttitle)>plset.tracktitlewidth then
+if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))>plset.tracktitlewidth then
 begin
 scrolltitle:='';
 pr2:=0;
 for i:=pr to length(artisttitle) do scrolltitle:=scrolltitle+artisttitle[i];
 inc(pr);
 artisttitle:='';
-for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(artisttitle)<plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
-if SinglePlayerGUI.Canvas.TextWidth(artisttitle)<=plset.tracktitlewidth then begin wait:=3; pr:=1; end;
+for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))<plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
+if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))<=plset.tracktitlewidth then begin wait:=3; pr:=1; end;
 if pr=2 then wait:=3;
 end else
 begin
 if SinglePlayerSettings.scrollsmalltrack=1 then
 begin
-if myalign(plset.tracktitleleft,artisttitle,0)+SinglePlayerGUI.Canvas.TextWidth(artisttitle)+pr2<myalign(plset.tracktitleleft,artisttitle,0)+plset.tracktitlewidth then pr2:=pr2+15 else begin pr2:=0; pr4:=-15; end;
+if myalign(plset.tracktitleleft,artisttitle,0)+SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(artisttitle))+pr2<myalign(plset.tracktitleleft,artisttitle,0)+plset.tracktitlewidth then pr2:=pr2+15 else begin pr2:=0; pr4:=-15; end;
 end else pr2:=0;
 end;
 
-if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))>plset.tracktitlewidth then
+if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))>plset.tracktitlewidth then
 begin
 scrolltitle2:='';
 pr4:=0;
 for i:=pr3 to length(scrolltitlestr) do scrolltitle2:=scrolltitle2+scrolltitlestr[i];
 inc(pr3);
 scrolltitlestr:='';
-for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))<plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
-if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))<=plset.tracktitlewidth then begin wait:=3;pr3:=1; end;
+for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))<plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
+if SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))<=plset.tracktitlewidth then begin wait:=3;pr3:=1; end;
 if pr3=2 then wait:=3;
 end else
 begin
 if SinglePlayerSettings.scrollsmalltrack=1 then
 begin
-if myalign(plset.tracktitleleft,scrolltitlestr,0)+SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))+pr4<myalign(plset.tracktitleleft,scrolltitlestr,0)+plset.tracktitlewidth then pr4:=pr4+15 else begin pr4:=0; pr2:=0; end;
+if myalign(plset.tracktitleleft,scrolltitlestr,0)+SinglePlayerGUI.Canvas.TextWidth(ansitoutf8(scrolltitlestr))+pr4<myalign(plset.tracktitleleft,scrolltitlestr,0)+plset.tracktitlewidth then pr4:=pr4+15 else begin pr4:=0; pr2:=0; end;
 end else pr4:=0;
 end;
 
@@ -5868,7 +5896,7 @@ var
 curdir:string;
 plfile:textfile;
 const
-  ArrExt : array[1..6] of ansistring = ( '.mp3', '.wav','.ogg','.flac','.aiff','.m4a');
+  ArrExt : array[1..7] of ansistring = ( '.mp3', '.wav','.ogg','.flac','.aiff','.m4a','.mpc');
 begin
  try
  if statusplaylist=0 then
@@ -6207,25 +6235,7 @@ var
   Timetrstr:single;
   i:integer;
 begin
- //updating:=1;
  try
-  if singleplayersettings.savepos = 1 then
-    begin
-     PlayerSettingsINI.WriteInteger('SinglePlayer','playedtrack',SinglePlayerSettings.playedtrack);
-     PlayerSettingsINI.WriteInteger('SinglePlayer','curpos',bass_ChannelGetPosition(channel,0));
-     PlayerSettingsINI.WriteInteger('SinglePlayer','curentplaylist',SinglePlayerSettings.curentplaylist);
-     PlayerSettingsINI.WriteString('SinglePlayer','curentdir',curentdir);
-     for i:=1 to kollpls do
-       begin
-        if fileexists(SinglePlayerDir+'playlist_'+inttostr(i)+'.pls') then
-         begin
-          if PlayerSettingsINI.ReadInteger('playlist_'+inttostr(i),'curtrack',0)<>plscurtrackpos[i,1] then PlayerSettingsINI.WriteInteger('playlist_'+inttostr(i),'curtrack',plscurtrackpos[i,1]);
-          if PlayerSettingsINI.ReadInteger('playlist_'+inttostr(i),'curpos',0)<>plscurtrackpos[i,2] then PlayerSettingsINI.WriteInteger('playlist_'+inttostr(i),'curpos',plscurtrackpos[i,2]);
-         end;
-       end;
-    end;
-  PlayerSettingsINI.UpdateFile;
-
   if SinglePlayerSettings.showcpu=1 then cpuinfo:=realtostr(BASS_GetCPU,2);
   if (mode=play) then if (BASS_ChannelIsActive(channel)=BASS_ACTIVE_STOPPED) then playnexttrack;
   if (mode=radioplay) then if (BASS_ChannelIsActive(radiochannel)=BASS_ACTIVE_STALLED) then RadioStreamDisconnected; //Crazzy
@@ -6254,8 +6264,8 @@ begin
      end;
    except
    end;
-   if thisTagv2.Artist<>'' then artist:=UTF8Encode(thisTagv2.Artist);
-   if thisTagv2.Title<>'' then title:=UTF8Encode(thisTagv2.Title);
+   if thisTagv2.Artist<>'' then artist:=thisTagv2.Artist;
+   if thisTagv2.Title<>'' then title:=thisTagv2.Title;
    if (artist<>'') and (title<>'') and (SinglePlayerSettings.track2str=0) then title:=' - '+title;
    if (artist+title='') or (singleplayersettings.readtags=0) then
     begin
@@ -6301,12 +6311,12 @@ begin
    begin
    if (connecting=0) then
     begin
-      artist:=UTF8Decode(curentradio)+' ';
+      artist:=utf8toansi(curentradio)+' ';
       title:=getnettag;
      end
      else
      begin
-       artist:=UTF8Decode(curentradio)+' ';
+       artist:=utf8toansi(curentradio)+' ';
        title:=getfromlangpack('connecting');
      end;
    end;
@@ -6316,7 +6326,6 @@ begin
  except
    LogAndExitPlayer('Ошибка в процедуре playertimerplay',0,0);
  end;
- //updating:=0;
 end;
 
 procedure TSinglePlayerGUI.WndProc(var Msg: TMessage);
@@ -6399,6 +6408,20 @@ begin
          begin
             bass_ChannelSetPosition(Channel, BASS_ChannelSeconds2Bytes(Channel,BASS_ChannelBytes2Seconds(Channel, BASS_ChannelGetPosition(Channel,0))-6),0);
          end;
+        if Msg.lParam=13 then {player singlestop}
+         begin
+          itelmastop;
+          SinglePlayerGUI.Invalidate;
+          exit;
+         end;
+        if Msg.lParam=14 then {player singleplay}
+         begin
+          SinglePlay;
+          SinglePlayerGUI.Invalidate;
+          exit;
+         end;
+
+
       end;{плеер конец-------------------------------------------------------------------------------------}
 
       if (Msg.wParam=3) and (mode<>closed) then {перемотка вперед с указанием числа секунды-------------------------}
@@ -6430,10 +6453,7 @@ end;
 
 procedure SendCopyData(hTargetWnd: HWND; ACopyDataStruct:TCopyDataStruct);
 begin
-  if hTargetWnd<>0 then
-    PostMessage(hTargetWnd, WM_COPYDATA, SinglePlayerGUI.Handle, {%H-}Longint(@ACopyDataStruct))
-  else
-    ShowMessage('No Recipient found!');
+  if hTargetWnd<>0 then SendMessage(hTargetWnd, WM_COPYDATA, longint(SinglePlayerGUI.Handle), {%H-}Longint(@ACopyDataStruct));
 end;
 
 procedure setplaypos(progresspos:integer);
@@ -6664,15 +6684,14 @@ var
   errortrack:integer;
 begin
  try
- //while updating=1 do;
  coverimgot.Clear;
  coverimgot.SetSize(0,0);
  coverimg.Clear;
  coverimg.SetSize(0,0);
- coverimgotPNG.Clear;
- coverimgotPNG.SetSize(0,0);
- coverimgPNG.Clear;
- coverimgPNG.SetSize(0,0);
+ coverimgotRadio.Clear;
+ coverimgotRadio.SetSize(0,0);
+ coverimgRadio.Clear;
+ coverimgRadio.SetSize(0,0);
  progresscor[1,1]:=0;
  errortrack:=-1;
  musictrack:=ChangeFileExt(musictrack,lowercase(ExtractFileExt(musictrack)));
@@ -6688,7 +6707,7 @@ begin
         inc(SinglePlayerSettings.playedtrack);
         musictrack:=track[SinglePlayerSettings.playedtrack];
        end;
-    if (length(musictrack)-pos('.flac',musictrack)<>4) or (pos('.flac',musictrack)=0) or (length(musictrack)-pos('.m4a',musictrack)<>3) or (pos('.m4a',musictrack)=0) then     {если не флак то выставляем автожанр}
+    if (length(musictrack)-pos('.flac',musictrack)<>4) or (pos('.flac',musictrack)=0) or (length(musictrack)-pos('.m4a',musictrack)<>3) or (pos('.m4a',musictrack)=0) or (length(musictrack)-pos('.mpc',musictrack)<>3) or (pos('.mpc',musictrack)=0) then     {если не флак то выставляем автожанр}
      begin
     if singleplayersettings.readtags=1 then
      begin
@@ -6719,7 +6738,7 @@ begin
        end;
       BASS_ChannelStop(Channel);
       BASS_StreamFree(Channel);
-      if ((length(musictrack)-pos('.flac',musictrack)=4) and (pos('.flac',musictrack)<>0)) or ((length(musictrack)-pos('.m4a',musictrack)=3) and (pos('.m4a',musictrack)<>0))  then   {если флак то считываем теги}
+      if ((length(musictrack)-pos('.flac',musictrack)=4) and (pos('.flac',musictrack)<>0)) or ((length(musictrack)-pos('.m4a',musictrack)=3) and (pos('.m4a',musictrack)<>0)) or ((length(musictrack)-pos('.mpc',musictrack)=3) and (pos('.mpc',musictrack)<>0))  then   {если флак то считываем теги}
        begin
         if (length(musictrack)-pos('.flac',musictrack)=4) and (pos('.flac',musictrack)<>0) then Channel := BASS_FLAC_StreamCreateFile(false, PChar(musictrack), 0, 0,BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
         if (length(musictrack)-pos('.m4a',musictrack)=3) and (pos('.m4a',musictrack)<>0) then
@@ -6728,12 +6747,12 @@ begin
           BASS_ChannelGetInfo (channel,chinfo);
           if chinfo.ctype <> BASS_CTYPE_STREAM_ALAC then Channel := BASS_MP4_StreamCreateFile(false, PChar(musictrack), 0, 0,BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
          end;
+        if (length(musictrack)-pos('.mpc',musictrack)=3) and (pos('.mpc',musictrack)<>0) then Channel := BASS_MPC_StreamCreateFile(false, PChar(musictrack), 0, 0,BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
      if singleplayersettings.readtags=1 then
        begin
-        thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
-        thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
-        thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
-        //thisTagv2.ReadFromFile(musictrack);
+        thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
+        thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
+        thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
      if SinglePlayerSettings.playfromgenre=1 then                                   {если автоэквалайзер то выставляем экв по значению флак тега}
      begin
       while (lowercase(thisTagv2.Genre)<>lowercase(copy(genremass[curentgenre,1],1,pos(';',genremass[curentgenre,1])-1))) and (FileExists(musictrack)) and (SinglePlayerSettings.playedtrack<SinglePlayerSettings.kolltrack) and (SinglePlayerSettings.playedtrack<>1) do
@@ -6745,11 +6764,10 @@ begin
          end;
         if clickprev=1 then dec(SinglePlayerSettings.playedtrack) else inc(SinglePlayerSettings.playedtrack);
         musictrack:=track[SinglePlayerSettings.playedtrack];
-        if ((length(musictrack)-pos('.flac',musictrack)=4) and (pos('.flac',musictrack)<>0)) or ((length(musictrack)-pos('.m4a',musictrack)=3) and (pos('.m4a',musictrack)<>0))  then
+        if ((length(musictrack)-pos('.flac',musictrack)=4) and (pos('.flac',musictrack)<>0)) or ((length(musictrack)-pos('.m4a',musictrack)=3) and (pos('.m4a',musictrack)<>0)) or ((length(musictrack)-pos('.mpc',musictrack)=3) and (pos('.mpc',musictrack)<>0))  then
          begin
           if (length(musictrack)-pos('.flac',musictrack)=4) then
           begin
-
             if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
              begin
               Channel := BASS_FLAC_StreamCreateFile(false, PChar(musictrack), 0, 0, BASS_STREAM_DECODE);
@@ -6771,17 +6789,23 @@ begin
              if chinfo.ctype <> BASS_CTYPE_STREAM_ALAC then Channel := BASS_MP4_StreamCreateFile(false, PChar(musictrack), 0, 0, BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
             end;
            end;
-        thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
-        thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
-        thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
-        //thisTagv2.ReadFromFile(musictrack);
+          if (length(musictrack)-pos('.mpc',musictrack)=3) then
+          begin
+            if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
+             begin
+              Channel := BASS_MPC_StreamCreateFile(false, PChar(musictrack), 0, 0, BASS_STREAM_DECODE);
+              channel := BASS_FX_TempoCreate(channel, BASS_FX_FREESOURCE);
+             end else Channel := BASS_MPC_StreamCreateFile(false, PChar(musictrack), 0, 0, BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
+           end;
+        thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
+        thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
+        thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
          end else thisTagv2.ReadFromFile(musictrack);
        end;
      end;
      end;
        end else
        begin
-              {звпуск проигрывания}
           if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
            begin
             Channel := BASS_StreamCreateFile(false, PChar(musictrack), 0, 0, BASS_STREAM_DECODE);
@@ -6795,7 +6819,7 @@ begin
         SinglePlayerSettings.curpos:=-1;
        end;
 
-
+     {звпуск проигрывания}
      if timestartplay<>0 then bass_ChannelSetPosition(channel,BASS_ChannelSeconds2Bytes(channel,timestartplay),0);   //1set
      eqapply(channel);
      if SinglePlayerSettings.mute=0 then BASS_ChannelSetAttribute(channel,BASS_ATTRIB_VOL,SinglePlayerSettings.curentvol/10) else BASS_ChannelSetAttribute(channel,BASS_ATTRIB_VOL,0);
@@ -6806,17 +6830,16 @@ begin
       while (not BASS_ChannelPlay(Channel, False)) and (SinglePlayerSettings.playedtrack<>errortrack) do
        begin
         musictrack:=track[SinglePlayerSettings.playedtrack];
-        if ((length(musictrack)-pos('.flac',musictrack)=4) and (pos('.flac',musictrack)<>0)) or ((length(musictrack)-pos('.m4a',musictrack)=3) and (pos('.m4a',musictrack)<>0))  then
+        if ((length(musictrack)-pos('.flac',musictrack)=4) and (pos('.flac',musictrack)<>0)) or ((length(musictrack)-pos('.m4a',musictrack)=3) and (pos('.m4a',musictrack)<>0)) or ((length(musictrack)-pos('.mpc',musictrack)=3) and (pos('.mpc',musictrack)<>0))  then
          begin
            if (length(musictrack)-pos('.flac',musictrack)=4) and (pos('.flac',musictrack)<>0) then
             begin
-
            if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
             begin
              Channel := BASS_FLAC_StreamCreateFile(false, PChar(musictrack), 0, 0,  BASS_STREAM_DECODE);
              channel := BASS_FX_TempoCreate(channel, BASS_FX_FREESOURCE);
             end else Channel := BASS_FLAC_StreamCreateFile(false, PChar(musictrack), 0, 0,BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
-         end;
+            end;
            if (length(musictrack)-pos('.m4a',musictrack)=3) and (pos('.m4a',musictrack)<>0) then
             begin
               if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
@@ -6832,16 +6855,22 @@ begin
                 if chinfo.ctype <> BASS_CTYPE_STREAM_ALAC then Channel := BASS_MP4_StreamCreateFile(false, PChar(musictrack), 0, 0, BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
                end;
            end;
+          if (length(musictrack)-pos('.mpc',musictrack)=3) and (pos('.mpc',musictrack)<>0) then
+           begin
+          if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
+           begin
+            Channel := BASS_MPC_StreamCreateFile(false, PChar(musictrack), 0, 0,  BASS_STREAM_DECODE);
+            channel := BASS_FX_TempoCreate(channel, BASS_FX_FREESOURCE);
+           end else Channel := BASS_MPC_StreamCreateFile(false, PChar(musictrack), 0, 0,BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
+           end;
           if singleplayersettings.readtags=1 then
            begin
-            thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
-            thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
-            thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
-           //thisTagv2.ReadFromFile(musictrack);
+            thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
+            thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
+            thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
            end;
          end else
          begin
-
            if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
             begin
              Channel := BASS_StreamCreateFile(false, PChar(musictrack), 0, 0,  BASS_STREAM_DECODE);
@@ -6871,14 +6900,13 @@ begin
         if SinglePlayerSettings.mute=0 then BASS_ChannelSetAttribute(channel,BASS_ATTRIB_VOL,SinglePlayerSettings.curentvol/10) else BASS_ChannelSetAttribute(channel,BASS_ATTRIB_VOL,0);
         SinglePlayerGUI.playertimer.Enabled:=true;
         playedtrack[SinglePlayerSettings.playedtrack]:=SinglePlayerSettings.playedtrack;
-        if (length(musictrack)-pos('.flac',musictrack)<>4) or (pos('.flac',musictrack)=0) or (length(musictrack)-pos('.m4a',musictrack)<>3) or (pos('.m4a',musictrack)=0)  then thisTagv2.ReadFromFile(musictrack) else
+        if (length(musictrack)-pos('.flac',musictrack)<>4) or (pos('.flac',musictrack)=0) or (length(musictrack)-pos('.m4a',musictrack)<>3) or (pos('.m4a',musictrack)=0) or (length(musictrack)-pos('.mpc',musictrack)<>3) or (pos('.mpc',musictrack)=0)  then thisTagv2.ReadFromFile(musictrack) else
         begin
          if singleplayersettings.readtags=1 then
           begin
-           thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
-           thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
-           thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
-          //thisTagv2.ReadFromFile(musictrack);
+           thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
+           thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
+           thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
           end;
         end;
         if SinglePlayerSettings.showcoverpl=1 then
@@ -6961,8 +6989,8 @@ end;
 
 procedure RadioStreamDisconnected;
 begin
-  artist:=UTF8Decode(curentradio)+' ';
-  title:=UTF8Decode(getfromlangpack('connecting'));
+  artist:=utf8toansi(curentradio)+' ';
+  title:=utf8toansi(getfromlangpack('connecting'));
   iradioplay(lastradiourl);
 end;
 
@@ -6973,16 +7001,17 @@ begin
  try
  BASS_ChannelStop(radiochannel);
  BASS_StreamFree(radiochannel);
- radiochannel:=BASS_StreamCreateURL(Pansichar(radiourlp),0,{BASS_STREAM_RESTRATE and }BASS_STREAM_STATUS,nil,nil); //Crazzy
- while (BASS_ErrorGetCode<>0) and (radioerror<1000) and (connecting<>0) do
+ radiochannel:=BASS_StreamCreateURL(Pansichar(radiourlp),0,{BASS_STREAM_RESTRATE and }BASS_STREAM_STATUS,nil,nil);
+   while (BASS_ErrorGetCode<>0) and (radioerror<1000) and (connecting<>0) do
   begin
     inc(radioerror);
     BASS_ChannelStop(radiochannel);
     BASS_StreamFree(radiochannel);
-    radiochannel:=BASS_StreamCreateURL(Pansichar(radiourlp),0,{BASS_STREAM_RESTRATE and }BASS_STREAM_STATUS,nil,nil); //Crazzy
+    radiochannel:=BASS_StreamCreateURL(Pansichar(radiourlp),0,{BASS_STREAM_RESTRATE and }BASS_STREAM_STATUS,nil,nil);
     application.ProcessMessages;
     SinglePlayerGUI.Repaint;
   end;
+
  if connecting=0 then
   begin
    BASS_ChannelStop(radiochannel);
@@ -7051,7 +7080,7 @@ begin
   if (p=0) then Exit;
   p:=p+13;
   meta:=PAnsiChar(AnsiString(Copy(meta,p,Pos(';',String(meta))-p-1)));
-  result:=UTF8Decode(meta);
+  result:=utf8toansi(meta);
 end;
 end;
 
@@ -7082,12 +7111,14 @@ begin
              (length(searchtrack.Name)-pos('.ogg',searchtrack.Name)=3) and (pos('.ogg',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.flac',searchtrack.Name)=4) and (pos('.flac',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.m4a',searchtrack.Name)=3) and (pos('.m4a',searchtrack.Name)<>0) or
+             (length(searchtrack.Name)-pos('.mpc',searchtrack.Name)=3) and (pos('.mpc',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.aiff',searchtrack.Name)=4) and (pos('.aiff',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.MP3',searchtrack.Name)=3) and (pos('.MP3',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.WAV',searchtrack.Name)=3) and (pos('.WAV',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.OGG',searchtrack.Name)=3) and (pos('.OGG',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.FLAC',searchtrack.Name)=4) and (pos('.FLAC',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.M4A',searchtrack.Name)=3) and (pos('.M4A',searchtrack.Name)<>0) or
+             (length(searchtrack.Name)-pos('.MPC',searchtrack.Name)=3) and (pos('.MPC',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.m3u',searchtrack.Name)=3) and (pos('.m3u',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.M3U',searchtrack.Name)=3) and (pos('.M3U',searchtrack.Name)<>0) or
              (length(searchtrack.Name)-pos('.pls',searchtrack.Name)=3) and (pos('.pls',searchtrack.Name)<>0) or
@@ -7108,463 +7139,217 @@ end;
 
 procedure gettree(disk:string; nfindex:integer);
 var
-	searchtrack : TSearchRec;
-	X1,Y1,X2,Y2,i,oneStringLen, bottomMargine, folderIconIndex, folderMarkedIconIndex, fileIconIndex, fileMarkedIconIndex : integer;
-	indexmass,n,kolstrok,sm,marked,k,latinLen,compensationFlag,firstSymbol : integer;
-	mass: array [1..10] of string;
-	bufName : string;
+  searchtrack : TSearchRec;
+  X1,Y1,X2,Y2,i:integer;
+  indexmass,n,kolstrok,sm,marked,k:integer;
+  mass: array [1..10] of string;
 begin
-	try
-		kolfilefolder:=0;
-		SinglePlayerGUI.Canvas.Font.Color:=plset.curentdircolor;
-		SinglePlayerGUI.Canvas.Font.Size:=plset.curentdirsize;
-		SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.curentdirleft,ExtractFileName(curentdir),1),plset.curentdirtop,ExtractFileName(UTF8Encode(curentdir)));
-		SinglePlayerGUI.Canvas.Font.Color:=plset.playlisttextncolor;
-		SinglePlayerGUI.Canvas.Font.Size:=plset.playlisttextnsize;
-		SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), myalign(plset.playlisttextnleft,getfromlangpack('page')+' '+inttostr(pageindex)+'/'+inttostr(kollpage),1),plset.playlisttextntop,getfromlangpack('page')+' '+inttostr(pageindex)+'/'+inttostr(kollpage));
-		SinglePlayerGUI.Canvas.Font.Color:=plset.scanfolderstrtextcolor;
-		SinglePlayerGUI.Canvas.Font.Size:=plset.scanfolderstrtextsize;
-		SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.scanfolderstrleft,scanningstr,1),plset.scanfolderstrtop,scanningstr);
-		folders := nil;
-		if playlistadd=0 then
-        	SinglePlayerSettings.kolltrackbuf := 0
-        else
-        	SinglePlayerSettings.kolltrackbuf := SinglePlayerSettings.kolltrack;
-		i:=0;
-		pospage[pageindex] := nfindex;
-		nextpageindex := 0;
-		if plset.treetype=0 then begin
-			X1 := plset.treeleft;
-			Y1 := plset.treetop;
-		end else begin
-			X1 := plset.treeleftsp;
-			Y1 := plset.treetopsp;
-		end;
-		SinglePlayerGUI.Canvas.Font.Color := plset.explorertextfolder;
-		if plset.treetype=0 then
-        	SinglePlayerGUI.Canvas.Font.Size := plset.treetextsize
-		else
-        	SinglePlayerGUI.Canvas.Font.Size := plset.treetextsizetree;
+ try
+  kolfilefolder:=0;
+  SinglePlayerGUI.Canvas.Font.Color:=plset.curentdircolor;
+  SinglePlayerGUI.Canvas.Font.Size:=plset.curentdirsize;
+  SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.curentdirleft,ExtractFileName(curentdir),1),plset.curentdirtop,ExtractFileName(ansitoutf8(curentdir)));
+  SinglePlayerGUI.Canvas.Font.Color:=plset.playlisttextncolor;
+  SinglePlayerGUI.Canvas.Font.Size:=plset.playlisttextnsize;
+  SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), myalign(plset.playlisttextnleft,getfromlangpack('page')+' '+inttostr(pageindex)+'/'+inttostr(kollpage),1),plset.playlisttextntop,getfromlangpack('page')+' '+inttostr(pageindex)+'/'+inttostr(kollpage));
+  SinglePlayerGUI.Canvas.Font.Color:=plset.scanfolderstrtextcolor;
+  SinglePlayerGUI.Canvas.Font.Size:=plset.scanfolderstrtextsize;
+  SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.scanfolderstrleft,scanningstr,1),plset.scanfolderstrtop,scanningstr);
+ folders:=nil;
+ if playlistadd=0 then SinglePlayerSettings.kolltrackbuf:=0 else SinglePlayerSettings.kolltrackbuf:=SinglePlayerSettings.kolltrack;
+  i:=0;
+  pospage[pageindex]:=nfindex;
+  nextpageindex:=0;
+  if plset.treetype=0 then
+   begin
+    X1:=plset.treeleft;
+    Y1:=plset.treetop;
+   end;
+  if plset.treetype=1 then
+   begin
+    X1:=plset.treeleftsp;
+    Y1:=plset.treetopsp;
+   end;
+  SinglePlayerGUI.Canvas.Font.Color:=plset.explorertextfolder;
+  if plset.treetype=0 then SinglePlayerGUI.Canvas.Font.Size:=plset.treetextsize;
+  if plset.treetype=1 then SinglePlayerGUI.Canvas.Font.Size:=plset.treetextsizetree;
+  if FindFirst('\'+disk+'\*', faDirectory, searchtrack) = 0 then
+     begin
+      repeat
+      marked:=0;
+      if ((searchtrack.attr and faDirectory)=faDirectory){$IFNDEF WInCE} and (searchtrack.Name<>'.') and (searchtrack.Name<>'..'){$ENDIF} then
+         begin
+          inc(i);
+          if (i>nfindex) then begin
+          SetLength(folders,i+1,7);
+          X2:=SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name);
+          Y2:=SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
+          if singleplayersettings.manyadd=1 then for k:=1 to tempallkolltrack do if pos(disk+'\'+searchtrack.name,temptrackmas[k])<>0 then begin  marked:=1; break; end;
+          if plset.treetype=0 then
+           begin
+          if X1+seticons[getindexicon('folder.bmp')].width>plset.maxrightsetka then begin Y1:=Y1+Y2+seticons[getindexicon('folder.bmp')].height+plset.treeintervalvert; X1:=plset.treeleft; end;
+          if Y1+Y2+seticons[getindexicon('folder.bmp')].height<plset.bottomsetka then
+             begin
+             inc(kolfilefolder);
+             if marked=0 then SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('folder.bmp')]) else SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('foldermarked.bmp')]);
+             indexmass:=1;
+             kolstrok:=1;
+             for n:=1 to 10 do mass[n]:='';
+             if SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name)>seticons[getindexicon('folder.bmp')].width then
+               begin
+               kolstrok:=(SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name) div seticons[getindexicon('folder.bmp')].width)+1;
+             for n:=1 to length(searchtrack.Name) do
+               begin
+                if length(mass[indexmass]) < (length(searchtrack.Name) div kolstrok)+plset.playlisttextr then  mass[indexmass]:=mass[indexmass]+searchtrack.Name[n] else
+                  begin
+                  mass[indexmass]:=mass[indexmass]+searchtrack.Name[n];
+                  inc(indexmass);
+                  end;
+               end;
+               end else begin kolstrok:=1; indexmass:=1; mass[1]:=searchtrack.Name; end;
+             if mass[1]<>'' then X2:=SinglePlayerGUI.Canvas.TextWidth(mass[1]);
+             if (plset.playlisttextstr<>'max') and (strtointdef(plset.playlisttextstr,0)<>0) and (indexmass>strtointdef(plset.playlisttextstr,0)) then indexmass:=strtointdef(plset.playlisttextstr,1);
+             if indexmass>0 then for n:=1 to indexmass do
+               begin
+                if n=1 then sm:=0 else sm:=SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
+                SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[getindexicon('folder.bmp')].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), ansitoutf8(mass[n]));
+               end;
+             folders[i,1]:=disk+'\'+searchtrack.Name;
+             folders[i,2]:='folder';
+             folders[i,3]:=inttostr(X1);
+             folders[i,4]:=inttostr(Y1);
+             folders[i,5]:=inttostr(X1+seticons[getindexicon('folder.bmp')].width);
+             folders[i,6]:=inttostr(Y1+seticons[getindexicon('folder.bmp')].height);
+             X1:=X1+seticons[getindexicon('folder.bmp')].width+plset.treeintervalhorz;
+             end else begin if nextpageindex=0 then nextpageindex:=i-1; break; end;
+           end;
 
-		if FindFirst('\'+disk+'\*', faDirectory, searchtrack) = 0 then begin repeat // поиск по папкам
-			marked:=0;
-			if ((searchtrack.attr and faDirectory)=faDirectory){$IFNDEF WInCE} and (searchtrack.Name<>'.') and (searchtrack.Name<>'..'){$ENDIF} then begin
-				inc(i);
-				if (i>nfindex) then begin
-					SetLength(folders,i+1,7);
-					X2 := SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name);
-					Y2 := SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
+          if plset.treetype=1 then
+            begin
+            if X1+seticons[getindexicon('foldertree.bmp')].width>plset.maxrighttree then begin Y1:=Y1+seticons[getindexicon('foldertree.bmp')].height+plset.treeintervalverttree; X1:=plset.treeleftsp; end;
+            if Y1+Y2+seticons[getindexicon('foldertree.bmp')].height<plset.bottomtree then
+               begin
+               inc(kolfilefolder);
 
-					if singleplayersettings.manyadd=1 then
-                    	for k:=1 to tempallkolltrack do
-                        	if pos(disk+'\'+searchtrack.name,temptrackmas[k])<>0 then begin
-                             	marked := 1;
-                                break;
-                            end;
-
-					if plset.treetype=0 then begin
-                    	folderIconIndex := getindexicon('folder.jpg');
-                        folderMarkedIconIndex := getindexicon('foldermarked.jpg');
-                        bottomMargine := plset.bottomsetka;
-
-						if X1+seticons[folderIconIndex].width>plset.maxrightsetka then begin
-                         	Y1 += Y2 + seticons[folderIconIndex].height + plset.treeintervalvert;
-                         	X1 := plset.treeleft;
-                        end;
-					end else begin
-                    	folderIconIndex := getindexicon('foldertree.jpg');
-                        folderMarkedIconIndex := getindexicon('foldertreemarked.jpg');
-                        bottomMargine := plset.bottomtree;
-
-						if X1+seticons[folderIconIndex].width>plset.maxrighttree then begin
-                        	Y1 += seticons[folderIconIndex].height + plset.treeintervalverttree;
-                            X1 := plset.treeleftsp;
-                        end;
-					end;
-
-                    if Y1+Y2+seticons[folderIconIndex].height<bottomMargine then begin
-						inc(kolfilefolder);
-                        bufName := UTF8Encode(searchtrack.Name); // конвертируем строку
-
-						if marked=0 then // выбираем иконку по маркировке и рисуем ее
-                        	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[folderIconIndex])
-                        else
-                        	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[folderMarkedIconIndex]);
-
-                        if plset.treetype=0 then begin // если файлы сеткой
-							indexmass := 1;
-							kolstrok := 1;
-
-
-							for n:=1 to 10 do // обнуляем массив
-	                        	mass[n] := '';
-
-							if SinglePlayerGUI.Canvas.TextWidth(bufName)>seticons[folderIconIndex].width then begin // если название папки больше ширины папки
-								kolstrok := (SinglePlayerGUI.Canvas.TextWidth(bufName) div seticons[folderIconIndex].width)+1; // то считаем количество строк
-								oneStringLen := length(bufName) div kolstrok; // определяем длину строки
-
-								latinLen := 0;
-                                compensationFlag := 0;
-                                firstSymbol := 1;
-								for n:=1 to length(bufName) do begin // для каждого символа строки
-									if (length(mass[indexmass])>=(oneStringLen+plset.playlisttextr)) then begin// если вышли за строку
-                                    	if strInArray(bufName[n]) then // считаем количество латиницы, цифр и знаков препинания
-                                        	inc(latinLen);
-                                        if latinLen<(oneStringLen+plset.playlisttextr+1) then begin
-                                        	compensationFlag := oneStringLen+plset.playlisttextr+1 - latinLen;
-                                            if (compensationFlag mod 2 <> 0) then
-                                            	compensationFlag := 1
-                                            else
-                                            	compensationFlag := 0;
-										end;
-                                        mass[indexmass] += bufName[n]; //заполняем массив
-                                        if compensationFlag=1 then
-											mass[indexmass] += bufName[n+1]; //заполняем массив
-	                                	inc(indexmass); // то делаем инкремент
-                                        latinLen := 0;
-                                        firstSymbol :=1;
-									end else begin
-                                    	if compensationFlag=0 then begin
-                                            if strInArray(bufName[n]) then inc(latinLen);
-                                            if (firstSymbol=1) then begin
-	                                        	if ((bufName[n]<>' ')) then
-                                            		mass[indexmass] += bufName[n]; //заполняем массив
-                                            firstSymbol := 0;
-											end else
-                                                mass[indexmass] += bufName[n]; //заполняем массив
-										end else
-                                        	compensationFlag := 0;
-									end;
-								end;
-							end else // если нет
-								mass[1] := bufName; // то просто перезаписываем название
-
-							if mass[1]<>'' then
-	                        	X2 := SinglePlayerGUI.Canvas.TextWidth(mass[1]);
-
-							if (plset.playlisttextstr<>'max') and (strtointdef(plset.playlisttextstr,0)<>0) and (indexmass>strtointdef(plset.playlisttextstr,0)) then
-	                        	indexmass := strtointdef(plset.playlisttextstr,1);
-
-							if indexmass>0 then for n:=1 to indexmass do begin
-								if n=1 then
-	                            	sm := 0
-	                            else
-	                            	sm := SinglePlayerGUI.Canvas.TextHeight(bufName);
-
-								SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[folderIconIndex].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), mass[n]);
-							end;
-                        end else begin
-                            SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[folderIconIndex].width+plset.treetextX ,Y1+plset.treetextY,bufName,textstyle);
-                        end;
-
-                        folders[i,1] := disk + '\' + searchtrack.Name;
-						folders[i,2] := 'folder';
-						folders[i,3] := inttostr(X1);
-						folders[i,4] := inttostr(Y1);
-                        folders[i,6] := inttostr(Y1+seticons[folderIconIndex].height);
-
-                        if plset.treetype=0 then begin
-							folders[i,5] := inttostr(X1+seticons[folderIconIndex].width);
-							X1 += seticons[folderIconIndex].width + plset.treeintervalhorz;
-                        end else begin
-							folders[i,5] := inttostr(X1+seticons[folderIconIndex].width+SinglePlayerGUI.Canvas.TextWidth(bufName)+plset.treetextX);
-							X1 += seticons[folderIconIndex].width + plset.maxrighttree;
-                        end;
-					end else begin
-                        if nextpageindex=0 then
-                        	nextpageindex := i - 1;
-                        break;
-                    end;
-				end;
-			end;
-			until FindNext(searchtrack) <> 0;
-			SysUtils.FindClose(searchtrack);
-		end;
-
-        if FindFirst('\'+disk+'\*', faDirectory, searchtrack) = 0 then begin repeat
+               if marked=0 then SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('foldertree.bmp')]) else SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('foldertreemarked.bmp')]);
+               SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[getindexicon('foldertree.bmp')].width+plset.treetextX ,Y1+plset.treetextY,ansitoutf8(searchtrack.Name),textstyle);
+               folders[i,1]:=disk+'\'+searchtrack.Name;
+               folders[i,2]:='folder';
+               folders[i,3]:=inttostr(X1);
+               folders[i,4]:=inttostr(Y1);
+               folders[i,5]:=inttostr(X1+seticons[getindexicon('foldertree.bmp')].width+SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name)+plset.treetextX);
+               folders[i,6]:=inttostr(Y1+seticons[getindexicon('foldertree.bmp')].height);
+               X1:=X1+seticons[getindexicon('foldertree.bmp')].width+plset.maxrighttree;
+               end else begin if nextpageindex=0 then nextpageindex:=i-1; break; end;
+            end;
+          end;
+         end;
+      until FindNext(searchtrack) <> 0;
+      SysUtils.FindClose(searchtrack);
+     end;
+        if FindFirst('\'+disk+'\*', faDirectory, searchtrack) = 0 then
+           begin
+            repeat
             marked:=0;
-            if (length(searchtrack.Name)-pos('.mp3',searchtrack.Name)=3) and (pos('.mp3',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.wav',searchtrack.Name)=3) and (pos('.wav',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.ogg',searchtrack.Name)=3) and (pos('.ogg',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.flac',searchtrack.Name)=4) and (pos('.flac',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.m4a',searchtrack.Name)=3) and (pos('.m4a',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.aiff',searchtrack.Name)=4) and (pos('.aiff',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.MP3',searchtrack.Name)=3) and (pos('.MP3',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.WAV',searchtrack.Name)=3) and (pos('.WAV',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.OGG',searchtrack.Name)=3) and (pos('.OGG',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.FLAC',searchtrack.Name)=4) and (pos('.FLAC',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.M4A',searchtrack.Name)=3) and (pos('.M4A',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.m3u',searchtrack.Name)=3) and (pos('.m3u',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.M3U',searchtrack.Name)=3) and (pos('.M3U',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.pls',searchtrack.Name)=3) and (pos('.pls',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.PLS',searchtrack.Name)=3) and (pos('.PLS',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.cue',searchtrack.Name)=3) and (pos('.cue',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.CUE',searchtrack.Name)=3) and (pos('.CUE',searchtrack.Name)<>0) or
-				(length(searchtrack.Name)-pos('.AIFF',searchtrack.Name)=4) and (pos('.AIFF',searchtrack.Name)<>0) then begin
-					inc(SinglePlayerSettings.kolltrackbuf);
-					trackbuf[SinglePlayerSettings.kolltrackbuf]:=disk+'\'+searchtrack.Name;
-					inc(i);
+            if
+                    (length(searchtrack.Name)-pos('.mp3',searchtrack.Name)=3) and (pos('.mp3',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.wav',searchtrack.Name)=3) and (pos('.wav',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.ogg',searchtrack.Name)=3) and (pos('.ogg',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.flac',searchtrack.Name)=4) and (pos('.flac',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.m4a',searchtrack.Name)=3) and (pos('.m4a',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.mpc',searchtrack.Name)=3) and (pos('.mpc',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.aiff',searchtrack.Name)=4) and (pos('.aiff',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.MP3',searchtrack.Name)=3) and (pos('.MP3',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.WAV',searchtrack.Name)=3) and (pos('.WAV',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.OGG',searchtrack.Name)=3) and (pos('.OGG',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.FLAC',searchtrack.Name)=4) and (pos('.FLAC',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.M4A',searchtrack.Name)=3) and (pos('.M4A',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.MPC',searchtrack.Name)=3) and (pos('.MPC',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.m3u',searchtrack.Name)=3) and (pos('.m3u',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.M3U',searchtrack.Name)=3) and (pos('.M3U',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.pls',searchtrack.Name)=3) and (pos('.pls',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.PLS',searchtrack.Name)=3) and (pos('.PLS',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.cue',searchtrack.Name)=3) and (pos('.cue',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.CUE',searchtrack.Name)=3) and (pos('.CUE',searchtrack.Name)<>0) or
+                    (length(searchtrack.Name)-pos('.AIFF',searchtrack.Name)=4) and (pos('.AIFF',searchtrack.Name)<>0)
+                 then begin
+                 inc(SinglePlayerSettings.kolltrackbuf);
+                 trackbuf[SinglePlayerSettings.kolltrackbuf]:=disk+'\'+searchtrack.Name;
+                 inc(i);
 
-					if (i>nfindex) then  begin
-						SetLength(folders,i+1,7);
-						X2:=SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name);
-						Y2:=SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
-
-						if singleplayersettings.manyadd=1 then
-                        	for k:=1 to tempallkolltrack do
-                                if pos(disk+'\'+searchtrack.name,temptrackmas[k])<>0 then begin
-                                	marked:=1;
-                                 	break;
-                                end;
-
-                        if plset.treetype=0 then begin
-                        	fileIconIndex := getindexicon('musicfile.jpg');
-                        	fileMarkedIconIndex := getindexicon('musicfilemarked.jpg');
-                            bottomMargine := plset.bottomsetka;
-
-							if X1+seticons[fileIconIndex].width>plset.maxrightsetka then begin
-                            	Y1:=Y1+Y2+seticons[fileIconIndex].height+plset.treeintervalvert;
-                                X1:=plset.treeleft;
+                 if (i>nfindex) then  begin
+                 SetLength(folders,i+1,7);
+                     X2:=SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name);
+                     Y2:=SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
+                 if singleplayersettings.manyadd=1 then for k:=1 to tempallkolltrack do if pos(disk+'\'+searchtrack.name,temptrackmas[k])<>0 then begin  marked:=1; break; end;
+                   if plset.treetype=0 then
+                    begin
+                     if X1+seticons[getindexicon('musicfile.bmp')].width>plset.maxrightsetka then begin Y1:=Y1+Y2+seticons[getindexicon('musicfile.bmp')].height+plset.treeintervalvert; X1:=plset.treeleft; end;
+                     if Y1+Y2+seticons[getindexicon('musicfile.bmp')].height<plset.bottomsetka then
+                       begin
+                       inc(kolfilefolder);
+                       if marked=0 then SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('musicfile.bmp')]) else SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('musicfilemarked.bmp')]);
+                       indexmass:=1;
+                       kolstrok:=1;
+                       for n:=1 to 10 do mass[n]:='';
+                       if SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name)>seticons[getindexicon('musicfile.bmp')].width then
+                         begin
+                         kolstrok:=(SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name) div seticons[getindexicon('musicfile.bmp')].width)+1;
+                       for n:=1 to length(searchtrack.Name) do
+                         begin
+                          if length(mass[indexmass]) < (length(searchtrack.Name) div kolstrok)+plset.playlisttextr then  mass[indexmass]:=mass[indexmass]+searchtrack.Name[n] else
+                            begin
+                            mass[indexmass]:=mass[indexmass]+searchtrack.Name[n];
+                            inc(indexmass);
                             end;
-						end else begin
-                        	fileIconIndex := getindexicon('musicfiletree.jpg');
-                        	fileMarkedIconIndex := getindexicon('musicfiletreemarked.jpg');
-                            bottomMargine := plset.bottomtree;
+                         end;
+                         end else begin kolstrok:=1; indexmass:=1; mass[1]:=searchtrack.Name; end;
+                       if mass[1]<>'' then X2:=SinglePlayerGUI.Canvas.TextWidth(mass[1]);
+                       if (plset.playlisttextstr<>'max') and (strtointdef(plset.playlisttextstr,0)<>0) and (indexmass>strtointdef(plset.playlisttextstr,0)) then indexmass:=strtointdef(plset.playlisttextstr,1);
+                       if indexmass>0 then for n:=1 to indexmass do
+                         begin
+                          if n=1 then sm:=0 else sm:=SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
+                          SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[getindexicon('musicfile.bmp')].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), ansitoutf8(mass[n]));
+                         end;
+                        folders[i,1]:=disk+'\'+searchtrack.Name;
+                        folders[i,2]:='files';
+                        folders[i,3]:=inttostr(X1);
+                        folders[i,4]:=inttostr(Y1);
+                        folders[i,5]:=inttostr(X1+seticons[getindexicon('musicfile.bmp')].width);
+                        folders[i,6]:=inttostr(Y1+seticons[getindexicon('musicfile.bmp')].height);
+                        X1:=X1+seticons[getindexicon('musicfile.bmp')].width+plset.treeintervalhorz;
+                        end  else begin if nextpageindex=0 then nextpageindex:=i-1; break; end;
+                      end;
+                    if plset.treetype=1 then
+                      begin
+                         if X1+seticons[getindexicon('musicfiletree.bmp')].width>plset.maxrighttree then begin Y1:=Y1+seticons[getindexicon('musicfiletree.bmp')].height+plset.treeintervalverttree; X1:=plset.treeleftsp; end;
+                         if Y1+Y2+seticons[getindexicon('musicfiletree.bmp')].height<plset.bottomtree then
+                          begin
+                           inc(kolfilefolder);
 
-							if X1+seticons[fileIconIndex].width>plset.maxrighttree then begin
-                            	Y1:=Y1+seticons[fileIconIndex].height+plset.treeintervalverttree;
-                                X1:=plset.treeleftsp;
-                            end;
-						end;
-
-                        if Y1+Y2+seticons[fileIconIndex].height<bottomMargine then begin
-							inc(kolfilefolder);
-                            bufName := UTF8Encode(searchtrack.Name); // конвертируем строку
-
-							if marked=0 then
-                            	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[fileIconIndex])
-                            else
-                            	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[fileMarkedIconIndex]);
-
-                            if plset.treetype=0 then begin
-								indexmass:=1;
-								kolstrok:=1;
-								for n:=1 to 10 do
-                                	mass[n]:='';
-
-                                if SinglePlayerGUI.Canvas.TextWidth(bufName)>seticons[fileIconIndex].width then begin // если название папки больше ширины папки
-									kolstrok := (SinglePlayerGUI.Canvas.TextWidth(bufName) div seticons[fileIconIndex].width)+1; // то считаем количество строк
-									oneStringLen := length(bufName) div kolstrok; // определяем длину строки
-
-                                    latinLen := 0;
-                                    compensationFlag := 0;
-                                    firstSymbol := 1;
-									for n:=1 to length(bufName) do begin // для каждого символа строки
-										if (length(mass[indexmass])>=(oneStringLen+plset.playlisttextr)) then begin// если вышли за строку
-                                        	if strInArray(bufName[n]) then // считаем количество латиницы, цифр и знаков препинания
-                                            	inc(latinLen);
-                                            if latinLen<(oneStringLen+plset.playlisttextr) then begin // сравниваем с общей длительностью
-                                            	compensationFlag := oneStringLen+plset.playlisttextr+1 - latinLen; // и подсчитываем количество символов под кириллицу
-                                                if (compensationFlag mod 2 <> 0) then // если нечетное число
-                                                	compensationFlag := 1 // то надо сделать компенсацию, т.к. для кириллицы надо 2 байта
-                                                else
-                                                	compensationFlag := 0;
-											end;
-                                            mass[indexmass] += bufName[n]; //заполняем массив
-                                            if compensationFlag=1 then // если нужна компенсация
-												mass[indexmass] += bufName[n+1]; //то заполняем массив еще раз  + IntToStr(compensationFlag)
-		                                	inc(indexmass); // то делаем инкремент
-                                            latinLen := 0;
-                                            firstSymbol :=1;
-										end else begin
-                                        	if compensationFlag=0 then begin // если компенсация не проводилась
-	                                            if strInArray(bufName[n]) then inc(latinLen); // то работаем штатно
-                                                if (firstSymbol=1) then begin
-		                                        	if ((bufName[n]<>' ')) then
-                                                		mass[indexmass] += bufName[n]; //заполняем массив
-                                                firstSymbol := 0;
-												end else
-                                                    mass[indexmass] += bufName[n]; //заполняем массив
-											end else // если проводилась
-                                            	compensationFlag := 0; // то пропускаем итерацию и обнуляем компенсацию
-										end;
-									end;
-								end else // если нет
-									mass[1] := bufName; // то просто перезаписываем название
-
-								if mass[1]<>'' then
-                                	X2:=SinglePlayerGUI.Canvas.TextWidth(mass[1]);
-								if (plset.playlisttextstr<>'max') and (strtointdef(plset.playlisttextstr,0)<>0) and (indexmass>strtointdef(plset.playlisttextstr,0)) then
-                                	indexmass:=strtointdef(plset.playlisttextstr,1);
-								if indexmass>0 then for n:=1 to indexmass do begin
-									if n=1 then
-                                    	sm:=0
-                                    else
-                                    	sm:=SinglePlayerGUI.Canvas.TextHeight(bufName);
-									SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[fileIconIndex].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), mass[n]);
-								end;
-                            end else begin
-                                SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[fileIconIndex].width+plset.treetextX ,Y1+plset.treetextY,bufName,textstyle);
-                            end;
-
-							folders[i,1]:=disk+'\'+searchtrack.Name;
-							folders[i,2]:='files';
-							folders[i,3]:=inttostr(X1);
-							folders[i,4]:=inttostr(Y1);
-                            folders[i,6]:=inttostr(Y1+seticons[fileIconIndex].height);
-
-                            if plset.treetype=0 then begin
-								folders[i,5]:=inttostr(X1+seticons[fileIconIndex].width);
-
-								X1:=X1+seticons[fileIconIndex].width+plset.treeintervalhorz;
-                            end else begin
-								folders[i,5]:=inttostr(X1+seticons[fileIconIndex].width+SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name)+plset.treetextX);
-								X1:=X1+seticons[fileIconIndex].width+plset.maxrighttree;
-                            end;
-						end else begin
-	                        	if nextpageindex=0 then
-	                            nextpageindex:=i-1;
-	                            break;
-	                        end;
-						end;
-					end;
-			until FindNext(searchtrack) <> 0;
-			SysUtils.FindClose(searchtrack);
-		end;
-
-		if getkollpagekey=1 then
-        	getkollstr;
-		for i:=Singleplayersettings.kolltrackbuf+1 to singleplayersettings.kolltrack do
-            if trackbuf[i]<>'' then
-            	trackbuf[i]:='';
-	except
-  		LogAndExitPlayer('Ошибка в процедуре gettree',0,0);
-	end;
+                           if marked=0 then SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('musicfiletree.bmp')]) else SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('musicfiletreemarked.bmp')]);
+                           SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[getindexicon('musicfiletree.bmp')].width+plset.treetextX ,Y1+plset.treetextY,ansitoutf8(searchtrack.Name),textstyle);
+                           folders[i,1]:=disk+'\'+searchtrack.Name;
+                           folders[i,2]:='files';
+                           folders[i,3]:=inttostr(X1);
+                           folders[i,4]:=inttostr(Y1);
+                           folders[i,5]:=inttostr(X1+seticons[getindexicon('musicfiletree.bmp')].width+SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name)+plset.treetextX);
+                           folders[i,6]:=inttostr(Y1+seticons[getindexicon('musicfiletree.bmp')].height);
+                           X1:=X1+seticons[getindexicon('musicfiletree.bmp')].width+plset.maxrighttree;
+                           end else begin if nextpageindex=0 then nextpageindex:=i-1; break; end;
+                      end;
+                    end;
+                 end;
+            until FindNext(searchtrack) <> 0;
+            SysUtils.FindClose(searchtrack);
+           end;
+  if getkollpagekey=1 then getkollstr;
+  for i:=Singleplayersettings.kolltrackbuf+1 to singleplayersettings.kolltrack do if trackbuf[i]<>'' then trackbuf[i]:='';
+ except
+  LogAndExitPlayer('Ошибка в процедуре gettree',0,0);
+ end;
 end;
 
-function strInArray(value : string) : Boolean;
-var
-	loop : String;
-	arrayOfDigits : array [1..17] of string = (' ', '.', ',', '-', '_', ':', ';', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
-	arrayOfLatters : array [1..26] of string = ('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z');
-begin
-	for loop in arrayOfDigits do begin
-		if value = loop then
-			Exit(true);
-	end;
-    for loop in arrayOfLatters do begin
-		if value = loop then
-			Exit(true);
-	end;
-	result := false;
-end;
-
-procedure createTreeObjects(disk:string; bufName:string; index:integer; marked:integer);
-var
-    X1,Y1,X2,Y2,oneStringLen, bottomMargine, folderIconIndex, folderMarkedIconIndex : integer;
-	indexmass,n,kolstrok,sm : integer;
-	mass: array [1..10] of string;
-begin
-	try
-    	if plset.treetype=0 then begin
-			X1 := plset.treeleft;
-			Y1 := plset.treetop;
-		end else begin
-			X1 := plset.treeleftsp;
-			Y1 := plset.treetopsp;
-		end;
-
-        X2 := SinglePlayerGUI.Canvas.TextWidth(bufName);
-		Y2 := SinglePlayerGUI.Canvas.TextHeight(bufName);
-
-        if plset.treetype=0 then begin
-        	folderIconIndex := getindexicon('folder.jpg');
-            folderMarkedIconIndex := getindexicon('foldermarked.jpg');
-            bottomMargine := plset.bottomsetka;
-
-			{if X1+seticons[folderIconIndex].width>plset.maxrightsetka then begin
-             	Y1 += Y2 + seticons[folderIconIndex].height + plset.treeintervalvert;
-             	X1 := plset.treeleft;
-            end;}
-		end else begin
-        	folderIconIndex := getindexicon('foldertree.jpg');
-            folderMarkedIconIndex := getindexicon('foldertreemarked.jpg');
-            bottomMargine := plset.bottomtree;
-
-			{if X1+seticons[folderIconIndex].width>plset.maxrighttree then begin
-            	Y1 += seticons[folderIconIndex].height + plset.treeintervalverttree;
-                X1 := plset.treeleftsp;
-            end; }
-		end;
-
-		inc(kolfilefolder);
-        //bufName := UTF8Encode(searchtrack.Name); // конвертируем строку
-
-		if marked=0 then // выбираем иконку по маркировке и рисуем ее
-        	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[folderIconIndex])
-        else
-        	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[folderMarkedIconIndex]);
-
-        if plset.treetype=0 then begin // если файлы сеткой
-			indexmass := 1;
-			kolstrok := 1;
-
-
-			for n:=1 to 10 do // обнуляем массив
-            	mass[n] := '';
-
-			if SinglePlayerGUI.Canvas.TextWidth(bufName)>seticons[folderIconIndex].width then begin // если название папки больше ширины папки
-				kolstrok := (SinglePlayerGUI.Canvas.TextWidth(bufName) div seticons[folderIconIndex].width)+1; // то считаем количество строк
-				oneStringLen := length(bufName) div kolstrok; // определяем длину строки
-
-				if (oneStringLen mod 2 <> 0) then // и делаем компенсацию в случае четности, т.к. русские буквы задаются двумя символами
-                	inc(oneStringLen);
-
-				for n:=1 to length(bufName) do begin // для каждого символа строки
-					if (length(mass[indexmass])>=(oneStringLen+plset.playlisttextr)) then begin// если вышли за строку
-                    	if (bufName[n]<>' ') then mass[indexmass] += bufName[n]; //заполняем массив
-                    	inc(indexmass); // то делаем инкремент
-					end else
-                        mass[indexmass] += bufName[n]; //заполняем массив
-				end;
-			end else // если нет
-				mass[1] := bufName; // то просто перезаписываем название
-
-			if mass[1]<>'' then
-            	X2 := SinglePlayerGUI.Canvas.TextWidth(mass[1]);
-
-			if (plset.playlisttextstr<>'max') and (strtointdef(plset.playlisttextstr,0)<>0) and (indexmass>strtointdef(plset.playlisttextstr,0)) then
-            	indexmass := strtointdef(plset.playlisttextstr,1);
-
-			if indexmass>0 then for n:=1 to indexmass do begin
-				if n=1 then
-                	sm := 0
-                else
-                	sm := SinglePlayerGUI.Canvas.TextHeight(bufName);
-
-				SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[folderIconIndex].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), mass[n]);
-			end;
-        end else begin
-            SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[folderIconIndex].width+plset.treetextX ,Y1+plset.treetextY,bufName,textstyle);
-        end;
-
-        folders[index,1] := disk + '\' + UTF8Decode(bufName);
-		folders[index,2] := 'folder';
-		folders[index,3] := inttostr(X1);
-		folders[index,4] := inttostr(Y1);
-        folders[index,6] := inttostr(Y1+seticons[folderIconIndex].height);
-
-        if plset.treetype=0 then begin
-			folders[index,5] := inttostr(X1+seticons[folderIconIndex].width);
-			X1 += seticons[folderIconIndex].width + plset.treeintervalhorz;
-        end else begin
-			folders[index,5] := inttostr(X1+seticons[folderIconIndex].width+SinglePlayerGUI.Canvas.TextWidth(bufName)+plset.treetextX);
-			X1 += seticons[folderIconIndex].width + plset.maxrighttree;
-        end;
-	except
-        LogAndExitPlayer('Ошибка в процедуре createTreeObjects',0,0);
-	end;
-end;
 
 procedure saveeq;
 var
@@ -8138,123 +7923,123 @@ begin
    begin
     if plsettingsmass[plsett,i]<>'' then
       begin
-      if Y1+playericon[getindexicon('chboff.jpg')].Height+plset.plseticonsm>plset.chbsetpole then begin Y1:=plset.plsettexttop; X1:=X1+plset.setchbsmh; end;
-      SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X1+playericon[getindexicon('chboff.jpg')].Width+plset.plsettextsmw,Y1+plset.plsettextsmh,plsettingsmass[plsett,i]);
-          if plsettingsznach[plsett,i]='1' then SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('chbon.jpg')]) else SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('chboff.jpg')]);
+      if Y1+playericon[getindexicon('chboff.bmp')].Height+plset.plseticonsm>plset.chbsetpole then begin Y1:=plset.plsettexttop; X1:=X1+plset.setchbsmh; end;
+      SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X1+playericon[getindexicon('chboff.bmp')].Width+plset.plsettextsmw,Y1+plset.plsettextsmh,plsettingsmass[plsett,i]);
+          if plsettingsznach[plsett,i]='1' then SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('chbon.bmp')]) else SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[getindexicon('chboff.bmp')]);
           plsettingscor[i,1]:=X1;
           plsettingscor[i,2]:=Y1;
-          plsettingscor[i,3]:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+plset.plsettextsmw;
-          plsettingscor[i,4]:=Y1+playericon[getindexicon('chboff.jpg')].Height;
+          plsettingscor[i,3]:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+plset.plsettextsmw;
+          plsettingscor[i,4]:=Y1+playericon[getindexicon('chboff.bmp')].Height;
           if (plsett=2) and (i=8) then       {рисуем spinedit для вкл режима выбора количества треков для свайпа}
             begin
-            X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-            X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.SwipeAmount))+playericon[getindexicon('equp.jpg')].Width+10;
-            SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-            SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-            SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.SwipeAmount));
-            plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
-            SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X3+playericon[getindexicon('eqdown.jpg')].Width+plset.plsettextsmw,Y1+plset.plsettextsmh,getfromlangpack('tracks'));
+            X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+            X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.SwipeAmount))+playericon[getindexicon('equp.bmp')].Width+10;
+            SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+            SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+            SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.SwipeAmount));
+            plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
+            SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X3+playericon[getindexicon('eqdown.bmp')].Width+plset.plsettextsmw,Y1+plset.plsettextsmh,getfromlangpack('tracks'));
             end;
        if (plsett=4) and (i=1) then       {рисуем spinedit для выклю эквалайзера при нагрузке}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.znachcpueq))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.znachcpueq));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.znachcpueq))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.znachcpueq));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=2) then       {рисуем spinedit для вкл эквалайзера при нагрузке}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.znachcpueqmin))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.znachcpueqmin));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.znachcpueqmin))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.znachcpueqmin));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=3) then       {рисуем spinedit для выбора интенсивности визуализации}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.vizintensivitu))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.vizintensivitu));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.vizintensivitu))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.vizintensivitu));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=4) then       {рисуем spinedit для выбора интенсивности визуализации}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netbuffer))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.netbuffer));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netbuffer))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.netbuffer));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=5) then       {рисуем spinedit для выбора интенсивности визуализации}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netprebuffer))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.netprebuffer));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netprebuffer))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.netprebuffer));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=6) then       {рисуем spinedit для выбора интенсивности визуализации}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.nettimeout))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.nettimeout));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.nettimeout))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.nettimeout));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=7) then       {рисуем spinedit для выбора интенсивности визуализации}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netreadtimeout))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.netreadtimeout));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.netreadtimeout))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.netreadtimeout));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=8) then       {рисуем spinedit для выбора интенсивности визуализации}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.playerbuffer))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.playerbuffer));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.playerbuffer))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.playerbuffer));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=9) then       {рисуем spinedit для выбора интенсивности визуализации}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.playupdateperiod))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.playupdateperiod));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(SinglePlayerSettings.playupdateperiod))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(SinglePlayerSettings.playupdateperiod));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=4) and (i=10) then       {рисуем spinedit для выбора интенсивности визуализации}
          begin
-         X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(playerfreqmas[SinglePlayerSettings.playerfreq]))+playericon[getindexicon('equp.jpg')].Width+10;
-         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,inttostr(playerfreqmas[SinglePlayerSettings.playerfreq]));
-         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+         X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+         X3:=X2+SinglePlayerGUI.Canvas.TextWidth(inttostr(playerfreqmas[SinglePlayerSettings.playerfreq]))+playericon[getindexicon('equp.bmp')].Width+10;
+         SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+         SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,inttostr(playerfreqmas[SinglePlayerSettings.playerfreq]));
+         plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
        if (plsett=5) and (i=10) then       {рисуем spinedit для выбора языка}
          begin
-          X2:=X1+playericon[getindexicon('chboff.jpg')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
-          X3:=X2+SinglePlayerGUI.Canvas.TextWidth(singleplayersettings.langg)+playericon[getindexicon('equp.jpg')].Width+10;
-          SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.jpg')]);
-          SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.jpg')]);
-          SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.jpg')].Width+5,Y1+plset.plsettextsmh,singleplayersettings.langg);
-          plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.jpg')].Width;
+          X2:=X1+playericon[getindexicon('chboff.bmp')].Width+SinglePlayerGUI.Canvas.TextWidth(plsettingsmass[plsett,i])+(plset.plsettextsmw*2);
+          X3:=X2+SinglePlayerGUI.Canvas.TextWidth(singleplayersettings.langg)+playericon[getindexicon('equp.bmp')].Width+10;
+          SinglePlayerGUI.Canvas.Draw(X2, Y1, playericon[getindexicon('equp.bmp')]);
+          SinglePlayerGUI.Canvas.Draw(X3, Y1, playericon[getindexicon('eqdown.bmp')]);
+          SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),X2+playericon[getindexicon('equp.bmp')].Width+5,Y1+plset.plsettextsmh,singleplayersettings.langg);
+          plsettingscor[i,3]:=X3+playericon[getindexicon('eqdown.bmp')].Width;
          end;
-      Y1:=Y1+playericon[getindexicon('chboff.jpg')].Height+plset.plseticonsm;
+      Y1:=Y1+playericon[getindexicon('chboff.bmp')].Height+plset.plseticonsm;
       end;
    end;
 
@@ -8270,37 +8055,37 @@ procedure generalsetpl;
 
 begin
  plsett:=1;
- itsicon:=getindexicon('generalsetpl.jpg');
+ itsicon:=getindexicon('generalsetpl.bmp');
 end;
 
 procedure playlistset;
 begin
  plsett:=2;
- itsicon:=getindexicon('playlistset.jpg');
+ itsicon:=getindexicon('playlistset.bmp');
 end;
 
 procedure soundsetpl;
 begin
  plsett:=3;
- itsicon:=getindexicon('soundsetpl.jpg');
+ itsicon:=getindexicon('soundsetpl.bmp');
 end;
 
 procedure plsetperf;
 begin
  plsett:=4;
- itsicon:=getindexicon('plsetperf.jpg');
+ itsicon:=getindexicon('plsetperf.bmp');
 end;
 
 procedure playerfaceset;
 begin
  plsett:=5;
- itsicon:=getindexicon('playerfaceset.jpg');
+ itsicon:=getindexicon('playerfaceset.bmp');
 end;
 
 procedure plsetskin;
 begin
  plsett:=6;
- itsicon:=getindexicon('plsetskin.jpg');
+ itsicon:=getindexicon('plsetskin.bmp');
 end;
 
 procedure trackdown(plstrack:integer);
@@ -8359,7 +8144,7 @@ begin
  SinglePlayerGUI.canvas.Font.Color:=$00FFFF;
  SinglePlayerGUI.Canvas.Font.Size:=16;
  SinglePlayerGUI.Canvas.Font.Bold:=true;
- SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign('1:center:800',UTF8Encode(extractfilename(curworktrack)),1),180,UTF8Encode(extractfilename(curworktrack)));
+ SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign('1:center:800',ansitoutf8(extractfilename(curworktrack)),1),180,ansitoutf8(extractfilename(curworktrack)));
  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),150,150,getfromlangpack('youwant'));
  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),450,150,getfromlangpack('delfromdisk'));
  SinglePlayerGUI.canvas.Font.Color:=$000000;
@@ -8389,7 +8174,7 @@ begin
  SinglePlayerGUI.Canvas.Font.Size:=16;
  SinglePlayerGUI.Canvas.Font.Bold:=true;
  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),255,150,getfromlangpack('addtrack'));
- SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign('1:center:800',UTF8Encode(extractfilename(curworktrack)),1),180,UTF8Encode(extractfilename(curworktrack)));
+ SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign('1:center:800',ansitoutf8(extractfilename(curworktrack)),1),180,ansitoutf8(extractfilename(curworktrack)));
  SinglePlayerGUI.canvas.Font.Color:=$000000;
  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),270,250,getfromlangpack('playlist'));
  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),445,240,getfromlangpack('playlist'));
@@ -8423,11 +8208,10 @@ begin
      thisTagv2.Clear;
 
      curenttrack:=ChangeFileExt(curenttrack,lowercase(ExtractFileExt(curenttrack)));
-     if ((length(curenttrack)-pos('.flac',curenttrack)=4) and (pos('.flac',curenttrack)<>0)) or ((length(curenttrack)-pos('.m4a',curenttrack)=3) and (pos('.m4a',curenttrack)<>0)) then
+     if ((length(curenttrack)-pos('.flac',curenttrack)=4) and (pos('.flac',curenttrack)<>0)) or ((length(curenttrack)-pos('.m4a',curenttrack)=3) and (pos('.m4a',curenttrack)<>0)) or ((length(curenttrack)-pos('.mpc',curenttrack)=3) and (pos('.mpc',curenttrack)<>0)) then
       begin
          if (length(curenttrack)-pos('.flac',curenttrack)=4) and (pos('.flac',curenttrack)<>0) then
           begin
-
         if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
          begin
           Channel := BASS_FLAC_StreamCreateFile(false, PChar(string(curenttrack)), 0, 0,  BASS_STREAM_DECODE);
@@ -8449,12 +8233,19 @@ begin
          if chinfo.ctype <> BASS_CTYPE_STREAM_ALAC then Channel := BASS_MP4_StreamCreateFile(false, PChar(string(curenttrack)), 0, 0, BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
         end;
       end;
+       if (length(curenttrack)-pos('.mpc',curenttrack)=3) and (pos('.mpc',curenttrack)<>0) then
+        begin
+      if (SinglePlayerSettings.tempo<>0) or (SinglePlayerSettings.pitch<>0) then
+       begin
+        Channel := BASS_MPC_StreamCreateFile(false, PChar(string(curenttrack)), 0, 0,  BASS_STREAM_DECODE);
+        channel := BASS_FX_TempoCreate(channel, BASS_FX_FREESOURCE);
+       end else  Channel := BASS_MPC_StreamCreateFile(false, PChar(string(curenttrack)), 0, 0,BASS_SAMPLE_FX and BASS_STREAM_AUTOFREE);
+       end;
       if singleplayersettings.readtags=1 then
        begin
-        thisTagv2.Genre:=UTF8Encode(TAGS_Read(Channel, '%GNRE'));
-        thisTagv2.Artist:=UTF8Encode(TAGS_Read(Channel, '%ARTI'));
-        thisTagv2.Title:=UTF8Encode(TAGS_Read(Channel, '%TITL'));
-        //thisTagv2.ReadFromFile(curenttrack);
+        thisTagv2.Genre:=string(TAGS_Read(Channel, '%GNRE'));
+        thisTagv2.Artist:=string(TAGS_Read(Channel, '%ARTI'));
+        thisTagv2.Title:=string(TAGS_Read(Channel, '%TITL'));
        end;
       end else
       begin
@@ -8479,7 +8270,7 @@ begin
       mode:=play;
       if SinglePlayerSettings.mute=0 then BASS_ChannelSetAttribute(channel,BASS_ATTRIB_VOL,SinglePlayerSettings.curentvol/10);
       SinglePlayerGUI.playertimer.Enabled:=true;
-      if ((length(curenttrack)-pos('.flac',curenttrack)<>4) or (pos('.flac',curenttrack)=0) or (length(curenttrack)-pos('.m4a',curenttrack)<>3) or (pos('.m4a',curenttrack)=0)) and (singleplayersettings.readtags=1) then thisTagv2.ReadFromFile(curenttrack);
+      if ((length(curenttrack)-pos('.flac',curenttrack)<>4) or (pos('.flac',curenttrack)=0) or (length(curenttrack)-pos('.m4a',curenttrack)<>3) or (pos('.m4a',curenttrack)=0) or (length(curenttrack)-pos('.mpc',curenttrack)<>3) or (pos('.mpc',curenttrack)=0)) and (singleplayersettings.readtags=1) then thisTagv2.ReadFromFile(curenttrack);
 
       if SinglePlayerSettings.showcoverpl=1 then
        begin
@@ -8699,10 +8490,11 @@ eqclear;
 exit;
 end;
 
-Procedure runprog(var progr:string; options:string);
+procedure runprog(var progr:string; options:string);
 var si: TStartupInfo;
 begin
  try
+ si.lpTitle:='run';
  CreateProcessW(pwidechar(widestring(progr)),pwidechar(widestring(options)),Nil,Nil,false,0,Nil,Nil,si,pi);
  //WaitforSingleObject(pi.hProcess,INFINITE); - ожидать завершения работы запущенной программы
  closehandle(pi.hThread);
@@ -8937,18 +8729,19 @@ var PictureDescription: UnicodeString;
     PictureMime: ansistring;
     PictureData: TStream;
     PictureType: Byte;
-    coverfolder: UnicodeString;
+    coverfolder:string;
 begin
  try
   coverloaded:=0;
+  radiocoverloaded:=0;
   coverimg.SetSize(0, 0);
   coverimg.Clear;
   coverimgot.SetSize(0, 0);
   coverimgot.Clear;
-  coverimgPNG.SetSize(0, 0);
-  coverimgPNG.Clear;
-  coverimgotPNG.SetSize(0, 0);
-  coverimgotPNG.Clear;
+  coverimgRadio.SetSize(0, 0);
+  coverimgRadio.Clear;
+  coverimgotRadio.SetSize(0, 0);
+  coverimgotRadio.Clear;
   if mode=play then
    begin
   PictureFrames := thisTagv2.GetAllPictureFrames;
@@ -8964,38 +8757,29 @@ begin
     coverloaded:=1;
   end else
   begin
-   coverfolder:='\'+ExtractFilepath(curenttrack);
-   if fileexists(coverfolder+'cover.jpg') then begin
-    coverimg.LoadFromFile(UTF8Encode(coverfolder)+'cover.jpg');
-    coverloaded:=1;
-   end else
+   coverfolder:='\'+ExtractFilepath(ansitoutf8(curenttrack));
+   if fileexists(utf8toansi(coverfolder+'cover.jpg')) then begin coverimg.LoadFromFile(coverfolder+'cover.jpg');   coverloaded:=1; end else
     begin
-     {if fileexists(coverfolder+'cover.png') then begin
-        coverimgPNG.LoadFromFile(coverfolder+'cover.png');
-        coverloaded:=2;
-     end else }
-       coverimg.SetSize(0, 0);
-       coverimgot.SetSize(0, 0);
-       coverimgPNG.SetSize(0, 0);
-       coverimgotPNG.SetSize(0, 0);
-       coverloaded:=0;
+     coverimg.SetSize(0, 0);
+     coverimgot.SetSize(0, 0);
+     coverloaded:=0;
     end;
   end;
    end else
    begin
    if mode=radioplay then
     begin
-     if fileexists(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\icons\'+radioimage) then
-      begin
-       coverimg.LoadFromFile(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\icons\'+radioimage);
-       coverloaded:=1;
-      end else
+     if fileexists(utf8toansi(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\icons\'+radioimage)) then
       begin
        coverimg.SetSize(0, 0);
        coverimgot.SetSize(0, 0);
-       coverimgPNG.SetSize(0, 0);
-       coverimgotPNG.SetSize(0, 0);
-       coverloaded:=0;
+       coverimgRadio.handle:=LoadBmp(utf8toansi(SinglePlayerDir+SinglePlayerSettings.skindir+SinglePlayerSettings.skin+'\icons\'+radioimage));
+       radiocoverloaded:=1;
+      end else
+      begin
+       coverimgRadio.SetSize(0, 0);
+       coverimgotRadio.SetSize(0, 0);
+       radiocoverloaded:=0;
       end;
     end;
    end;
@@ -9010,12 +8794,64 @@ begin
  try
   if (mode=play) or (mode=radioplay) then
    begin
-    if SinglePlayerSettings.curentvol<>0 then tempvol:=SinglePlayerSettings.curentvol;
     SinglePlayerGUI.invalidate;
     itelmastop;
     exit;
    end;
 
+ SinglePlay;
+
+ except
+  LogAndExitPlayer('Ошибка в процедуре itelmastopplay',0,0);
+ end;
+end;
+
+procedure itelmastop;
+begin
+ try
+  if SinglePlayerSettings.curentvol<>0 then tempvol:=SinglePlayerSettings.curentvol;
+  if mode=radioplay then
+    begin
+     BASS_ChannelPause(radiochannel);
+     mode:=paused;
+     exit;
+    end;
+  if (SinglePlayerSettings.plavzvuk=1) and (SinglePlayerSettings.mute=0) then
+    begin
+      {$IFNDEF SP_STANDALONE} if (SinglePlayerUSB=1) then
+      begin
+        tempvol:=SinglePlayerSettings.curentvol;
+        SinglePlayerSettings.curentvol:=0;
+      end
+      else
+      {$ENDIF}
+      begin
+        while SinglePlayerSettings.curentvol>0 do
+        begin
+         SinglePlayerSettings.curentvol:=SinglePlayerSettings.curentvol-1;
+         BASS_ChannelSetAttribute(channel,BASS_ATTRIB_VOL,SinglePlayerSettings.curentvol/10);
+         sleep(30);
+        end;
+      end;
+    end;
+  if mode=play then
+    begin
+     SinglePlayerSettings.curpos:=bass_ChannelGetPosition(channel,0);
+     if (SinglePlayerSettings.ciclepls=0) and (SinglePlayerSettings.playedtrack=SinglePlayerSettings.kolltrack) and
+     (BASS_ChannelBytes2Seconds(Channel, BASS_ChannelGetLength(Channel,0))-BASS_ChannelBytes2Seconds(Channel, BASS_ChannelGetPosition(Channel,0))=0) then SinglePlayerSettings.curpos:=-1;
+     BASS_ChannelStop(Channel);
+     //BASS_StreamFree(Channel);
+    end;
+    SinglePlayerGUI.playertimer.Enabled:=false;
+    mode:=Paused;
+ except
+  LogAndExitPlayer('Ошибка в процедуре itelmastop',0,0);
+ end;
+end;
+
+procedure SinglePlay;
+begin
+ try
   if singleplayersettings.startautoplay=1 then
    begin
     if (mode=started) and (singleplayersettings.lasturl<>'') and (pos('http',singleplayersettings.lasturl)=1) then
@@ -9071,40 +8907,6 @@ begin
 
  except
   LogAndExitPlayer('Ошибка в процедуре itelmastopplay',0,0);
- end;
-end;
-
-procedure itelmastop;
-begin
- try
-
-  if mode=radioplay then
-    begin
-     BASS_ChannelPause(radiochannel);
-     mode:=paused;
-     exit;
-    end;
-  if (SinglePlayerSettings.plavzvuk=1) and (SinglePlayerSettings.mute=0) {$IFNDEF SP_STANDALONE} and (SinglePlayerUSB=0){$ENDIF} then
-    begin
-     while SinglePlayerSettings.curentvol>0 do
-      begin
-       SinglePlayerSettings.curentvol:=SinglePlayerSettings.curentvol-1;
-       BASS_ChannelSetAttribute(channel,BASS_ATTRIB_VOL,SinglePlayerSettings.curentvol/10);
-       sleep(30);
-      end;
-    end;
-  if mode=play then
-    begin
-     SinglePlayerSettings.curpos:=bass_ChannelGetPosition(channel,0);
-     if (SinglePlayerSettings.ciclepls=0) and (SinglePlayerSettings.playedtrack=SinglePlayerSettings.kolltrack) and
-     (BASS_ChannelBytes2Seconds(Channel, BASS_ChannelGetLength(Channel,0))-BASS_ChannelBytes2Seconds(Channel, BASS_ChannelGetPosition(Channel,0))=0) then SinglePlayerSettings.curpos:=-1;
-     BASS_ChannelStop(Channel);
-     //BASS_StreamFree(Channel);
-    end;
-    SinglePlayerGUI.playertimer.Enabled:=false;
-    mode:=Paused;
- except
-  LogAndExitPlayer('Ошибка в процедуре itelmastop',0,0);
  end;
 end;
 
@@ -9291,37 +9093,37 @@ if SinglePlayerSettings.kolltrack<>0 then
   for i:=nachpls to konpls do
     begin
      SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,inttostr(i),1),Ystr,inttostr(i));
-     SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),textstyle );
+     SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),textstyle );
      plstrackcor[i,1]:=plset.noticonpoleleft;
      plstrackcor[i,2]:=Ystr-(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
      plstrackcor[i,3]:=plset.noticonpolerigth;
      plstrackcor[i,4]:=Ystr+SinglePlayerGUI.Canvas.Textheight(inttostr(i))+(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
-     if getindexicon('plsdeldisk.jpg')<>0 then
+     if getindexicon('plsdeldisk.bmp')<>0 then
      begin
-     xtrack:=SinglePlayerGUI.Width-seticons[getindexicon('plsdeldisk.jpg')].width-plset.deldiskiconsm;      {кнопка удалить трек с диска}
+     xtrack:=SinglePlayerGUI.Width-seticons[getindexicon('plsdeldisk.bmp')].width-plset.deldiskiconsm;      {кнопка удалить трек с диска}
      plstrackcor[i,5]:=xtrack;
      plstrackcor[i,6]:=Ystr+plset.deldisktracktop;
-     plstrackcor[i,7]:=xtrack+seticons[getindexicon('plsdeldisk.jpg')].width;
-     plstrackcor[i,8]:=Ystr+seticons[getindexicon('plsdeldisk.jpg')].height+plset.deldisktracktop;
-     SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deldisktracktop,playericon[getindexicon('plsdeldisk.jpg')]);
+     plstrackcor[i,7]:=xtrack+seticons[getindexicon('plsdeldisk.bmp')].width;
+     plstrackcor[i,8]:=Ystr+seticons[getindexicon('plsdeldisk.bmp')].height+plset.deldisktracktop;
+     SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deldisktracktop,playericon[getindexicon('plsdeldisk.bmp')]);
      end;
-      if getindexicon('plsdel.jpg')<>0 then
+      if getindexicon('plsdel.bmp')<>0 then
       begin
-     xtrack:=xtrack-seticons[getindexicon('plsdel.jpg')].width-plset.deliconsm;                   {кнопка удалить трек с плейлиста}
+     xtrack:=xtrack-seticons[getindexicon('plsdel.bmp')].width-plset.deliconsm;                   {кнопка удалить трек с плейлиста}
      plstrackcor[i,9]:=xtrack;
      plstrackcor[i,10]:=Ystr+plset.deltracktop;
-     plstrackcor[i,11]:=xtrack+seticons[getindexicon('plsdel.jpg')].width;
-     plstrackcor[i,12]:=Ystr+seticons[getindexicon('plsdel.jpg')].height+plset.deltracktop;
-     SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deltracktop,playericon[getindexicon('plsdel.jpg')]);
+     plstrackcor[i,11]:=xtrack+seticons[getindexicon('plsdel.bmp')].width;
+     plstrackcor[i,12]:=Ystr+seticons[getindexicon('plsdel.bmp')].height+plset.deltracktop;
+     SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deltracktop,playericon[getindexicon('plsdel.bmp')]);
      end;
-       if getindexicon('plsfav.jpg')<>0 then
+       if getindexicon('plsfav.bmp')<>0 then
        begin
-     xtrack:=xtrack-seticons[getindexicon('plsfav.jpg')].width-plset.faviconsm;                   {добавить трек в фовариты}
+     xtrack:=xtrack-seticons[getindexicon('plsfav.bmp')].width-plset.faviconsm;                   {добавить трек в фовариты}
      plstrackcor[i,21]:=xtrack;
      plstrackcor[i,22]:=Ystr+plset.favtracktop;
-     plstrackcor[i,23]:=xtrack+seticons[getindexicon('plsfav.jpg')].width;
-     plstrackcor[i,24]:=Ystr+seticons[getindexicon('plsfav.jpg')].height+plset.favtracktop;
-     SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.favtracktop,playericon[getindexicon('plsfav.jpg')]);
+     plstrackcor[i,23]:=xtrack+seticons[getindexicon('plsfav.bmp')].width;
+     plstrackcor[i,24]:=Ystr+seticons[getindexicon('plsfav.bmp')].height+plset.favtracktop;
+     SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.favtracktop,playericon[getindexicon('plsfav.bmp')]);
        end;
      if pos('st#',track[i])<>0 then srtrack:=copy(track[i],pos('st#',track[i])+3,length(track[i])-pos('st#',track[i])-2) else srtrack:=track[i];
       if (srtrack=curenttrack) and (i=npltr) and (mode=play) then
@@ -9329,56 +9131,56 @@ if SinglePlayerSettings.kolltrack<>0 then
        SinglePlayerGUI.Canvas.Brush.Color:=plset.vidplcolor;   {проигрываемый}
        SinglePlayerGUI.Canvas.rectangle(classes.Rect(plset.vidpltrackleft,Ystr+plset.vidpltracktop,plset.vidpltrackwidth,Ystr+plset.vidpltrackheight+plset.vidpltracktop));
        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,inttostr(i),1),Ystr,inttostr(i));
-       SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),textstyle );
+       SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),textstyle );
        plstrackcor[i,1]:=plset.noticonpoleleft;
        plstrackcor[i,2]:=Ystr-(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
        plstrackcor[i,3]:=plset.noticonpolerigth;
        plstrackcor[i,4]:=Ystr+SinglePlayerGUI.Canvas.Textheight(inttostr(i))+(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
-        if getindexicon('plsdeldisk.jpg')<>0 then
+        if getindexicon('plsdeldisk.bmp')<>0 then
        begin
-       xtrack:=SinglePlayerGUI.Width-seticons[getindexicon('plsdeldisk.jpg')].width-plset.deldiskiconsm;
+       xtrack:=SinglePlayerGUI.Width-seticons[getindexicon('plsdeldisk.bmp')].width-plset.deldiskiconsm;
        plstrackcor[i,5]:=xtrack;
        plstrackcor[i,6]:=Ystr+plset.deldisktracktop;
-       plstrackcor[i,7]:=xtrack+seticons[getindexicon('plsdeldisk.jpg')].width;
-       plstrackcor[i,8]:=Ystr+seticons[getindexicon('plsdeldisk.jpg')].height+plset.deldisktracktop;
-       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deldisktracktop,playericon[getindexicon('plsdeldisk.jpg')]);
+       plstrackcor[i,7]:=xtrack+seticons[getindexicon('plsdeldisk.bmp')].width;
+       plstrackcor[i,8]:=Ystr+seticons[getindexicon('plsdeldisk.bmp')].height+plset.deldisktracktop;
+       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deldisktracktop,playericon[getindexicon('plsdeldisk.bmp')]);
        end;
-         if getindexicon('plsdel.jpg')<>0 then
+         if getindexicon('plsdel.bmp')<>0 then
         begin
-       xtrack:=xtrack-seticons[getindexicon('plsdel.jpg')].width-plset.deliconsm;
+       xtrack:=xtrack-seticons[getindexicon('plsdel.bmp')].width-plset.deliconsm;
        plstrackcor[i,9]:=xtrack;
        plstrackcor[i,10]:=Ystr+plset.deltracktop;
-       plstrackcor[i,11]:=xtrack+seticons[getindexicon('plsdel.jpg')].width;
-       plstrackcor[i,12]:=Ystr+seticons[getindexicon('plsdel.jpg')].height+plset.deltracktop;
-       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deltracktop,playericon[getindexicon('plsdel.jpg')]);
+       plstrackcor[i,11]:=xtrack+seticons[getindexicon('plsdel.bmp')].width;
+       plstrackcor[i,12]:=Ystr+seticons[getindexicon('plsdel.bmp')].height+plset.deltracktop;
+       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deltracktop,playericon[getindexicon('plsdel.bmp')]);
 
         end;
-        if getindexicon('plsfav.jpg')<>0 then
+        if getindexicon('plsfav.bmp')<>0 then
         begin
-       xtrack:=xtrack-seticons[getindexicon('plsfav.jpg')].width-plset.faviconsm;                   {добавить трек в фовариты}
+       xtrack:=xtrack-seticons[getindexicon('plsfav.bmp')].width-plset.faviconsm;                   {добавить трек в фовариты}
        plstrackcor[i,21]:=xtrack;
        plstrackcor[i,22]:=Ystr+plset.favtracktop;
-       plstrackcor[i,23]:=xtrack+seticons[getindexicon('plsfav.jpg')].width;
-       plstrackcor[i,24]:=Ystr+seticons[getindexicon('plsfav.jpg')].height+plset.favtracktop;
-       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.favtracktop,playericon[getindexicon('plsfav.jpg')]);
+       plstrackcor[i,23]:=xtrack+seticons[getindexicon('plsfav.bmp')].width;
+       plstrackcor[i,24]:=Ystr+seticons[getindexicon('plsfav.bmp')].height+plset.favtracktop;
+       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.favtracktop,playericon[getindexicon('plsfav.bmp')]);
         end;
-        if getindexicon('plsdown.jpg')<>0 then
+        if getindexicon('plsdown.bmp')<>0 then
         begin
-       xtrack:=xtrack-seticons[getindexicon('plsdown.jpg')].width-plset.downiconsm;
+       xtrack:=xtrack-seticons[getindexicon('plsdown.bmp')].width-plset.downiconsm;
        plstrackcor[i,13]:=xtrack;
        plstrackcor[i,14]:=Ystr+plset.downtracktop;
-       plstrackcor[i,15]:=xtrack+seticons[getindexicon('plsdown.jpg')].width;
-       plstrackcor[i,16]:=Ystr+seticons[getindexicon('plsdown.jpg')].height+plset.downtracktop;
-       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.downtracktop,playericon[getindexicon('plsdown.jpg')]);
+       plstrackcor[i,15]:=xtrack+seticons[getindexicon('plsdown.bmp')].width;
+       plstrackcor[i,16]:=Ystr+seticons[getindexicon('plsdown.bmp')].height+plset.downtracktop;
+       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.downtracktop,playericon[getindexicon('plsdown.bmp')]);
        end;
-        if getindexicon('plsup.jpg')<>0 then
+        if getindexicon('plsup.bmp')<>0 then
         begin
-       xtrack:=xtrack-seticons[getindexicon('plsup.jpg')].width-plset.upiconsm;
+       xtrack:=xtrack-seticons[getindexicon('plsup.bmp')].width-plset.upiconsm;
        plstrackcor[i,17]:=xtrack;
        plstrackcor[i,18]:=Ystr+plset.uptracktop;
-       plstrackcor[i,19]:=xtrack+seticons[getindexicon('plsup.jpg')].width;
-       plstrackcor[i,20]:=Ystr+seticons[getindexicon('plsup.jpg')].height+plset.uptracktop;
-       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.uptracktop,playericon[getindexicon('plsup.jpg')]);
+       plstrackcor[i,19]:=xtrack+seticons[getindexicon('plsup.bmp')].width;
+       plstrackcor[i,20]:=Ystr+seticons[getindexicon('plsup.bmp')].height+plset.uptracktop;
+       SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.uptracktop,playericon[getindexicon('plsup.bmp')]);
         end;
        end;
 
@@ -9387,55 +9189,55 @@ if SinglePlayerSettings.kolltrack<>0 then
         SinglePlayerGUI.Canvas.Brush.Color:=plset.vidcolor;    {выбранный}
         SinglePlayerGUI.Canvas.rectangle(classes.Rect(plset.vidtrackleft,Ystr+plset.vidtracktop,plset.vidtrackwidth,Ystr+plset.vidtrackheight+plset.vidtracktop));
         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,inttostr(i),1),Ystr,inttostr(i));
-        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(UTF8Encode(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt( UTF8Encode(track[i]),'')),textstyle );
+        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playlisttextleft,extractfilename(ChangeFileExt(ansitoutf8(track[i]),'')),1)+SinglePlayerGUI.Canvas.Textwidth(inttostr(i))+30,Ystr,extractfilename(ChangeFileExt( ansitoutf8(track[i]),'')),textstyle );
         plstrackcor[i,1]:=plset.noticonpoleleft;
         plstrackcor[i,2]:=Ystr-(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
         plstrackcor[i,3]:=plset.noticonpolerigth;
         plstrackcor[i,4]:=Ystr+SinglePlayerGUI.Canvas.Textheight(inttostr(i))+(SinglePlayerGUI.Canvas.Textheight(inttostr(i))div 2);
-        if getindexicon('plsdeldisk.jpg')<>0 then
+        if getindexicon('plsdeldisk.bmp')<>0 then
         begin
-        xtrack:=SinglePlayerGUI.Width-seticons[getindexicon('plsdeldisk.jpg')].width-plset.deldiskiconsm;
+        xtrack:=SinglePlayerGUI.Width-seticons[getindexicon('plsdeldisk.bmp')].width-plset.deldiskiconsm;
         plstrackcor[i,5]:=xtrack;
         plstrackcor[i,6]:=Ystr+plset.deldisktracktop;
-        plstrackcor[i,7]:=xtrack+seticons[getindexicon('plsdeldisk.jpg')].width;
-        plstrackcor[i,8]:=Ystr+seticons[getindexicon('plsdeldisk.jpg')].height+plset.deldisktracktop;
-        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deldisktracktop,playericon[getindexicon('plsdeldisk.jpg')]);
+        plstrackcor[i,7]:=xtrack+seticons[getindexicon('plsdeldisk.bmp')].width;
+        plstrackcor[i,8]:=Ystr+seticons[getindexicon('plsdeldisk.bmp')].height+plset.deldisktracktop;
+        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deldisktracktop,playericon[getindexicon('plsdeldisk.bmp')]);
         end;
-        if getindexicon('plsdel.jpg')<>0 then
+        if getindexicon('plsdel.bmp')<>0 then
         begin
-        xtrack:=xtrack-seticons[getindexicon('plsdel.jpg')].width-plset.deliconsm;
+        xtrack:=xtrack-seticons[getindexicon('plsdel.bmp')].width-plset.deliconsm;
         plstrackcor[i,9]:=xtrack;
         plstrackcor[i,10]:=Ystr+plset.deltracktop;
-        plstrackcor[i,11]:=xtrack+seticons[getindexicon('plsdel.jpg')].width;
-        plstrackcor[i,12]:=Ystr+seticons[getindexicon('plsdel.jpg')].height+plset.deltracktop;
-        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deltracktop,playericon[getindexicon('plsdel.jpg')]);
+        plstrackcor[i,11]:=xtrack+seticons[getindexicon('plsdel.bmp')].width;
+        plstrackcor[i,12]:=Ystr+seticons[getindexicon('plsdel.bmp')].height+plset.deltracktop;
+        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.deltracktop,playericon[getindexicon('plsdel.bmp')]);
         end;
-        if getindexicon('plsfav.jpg')<>0 then
+        if getindexicon('plsfav.bmp')<>0 then
         begin
-        xtrack:=xtrack-seticons[getindexicon('plsfav.jpg')].width-plset.faviconsm;                   {добавить трек в фовариты}
+        xtrack:=xtrack-seticons[getindexicon('plsfav.bmp')].width-plset.faviconsm;                   {добавить трек в фовариты}
         plstrackcor[i,21]:=xtrack;
         plstrackcor[i,22]:=Ystr+plset.favtracktop;
-        plstrackcor[i,23]:=xtrack+seticons[getindexicon('plsfav.jpg')].width;
-        plstrackcor[i,24]:=Ystr+seticons[getindexicon('plsfav.jpg')].height+plset.favtracktop;
-        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.favtracktop,playericon[getindexicon('plsfav.jpg')]);
+        plstrackcor[i,23]:=xtrack+seticons[getindexicon('plsfav.bmp')].width;
+        plstrackcor[i,24]:=Ystr+seticons[getindexicon('plsfav.bmp')].height+plset.favtracktop;
+        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.favtracktop,playericon[getindexicon('plsfav.bmp')]);
         end;
-        if getindexicon('plsdown.jpg')<>0 then
+        if getindexicon('plsdown.bmp')<>0 then
         begin
-        xtrack:=xtrack-seticons[getindexicon('plsdown.jpg')].width-plset.downiconsm;
+        xtrack:=xtrack-seticons[getindexicon('plsdown.bmp')].width-plset.downiconsm;
         plstrackcor[i,13]:=xtrack;
         plstrackcor[i,14]:=Ystr+plset.downtracktop;
-        plstrackcor[i,15]:=xtrack+seticons[getindexicon('plsdown.jpg')].width;
-        plstrackcor[i,16]:=Ystr+seticons[getindexicon('plsdown.jpg')].height+plset.downtracktop;
-        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.downtracktop,playericon[getindexicon('plsdown.jpg')]);
+        plstrackcor[i,15]:=xtrack+seticons[getindexicon('plsdown.bmp')].width;
+        plstrackcor[i,16]:=Ystr+seticons[getindexicon('plsdown.bmp')].height+plset.downtracktop;
+        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.downtracktop,playericon[getindexicon('plsdown.bmp')]);
         end;
-        if getindexicon('plsup.jpg')<>0 then
+        if getindexicon('plsup.bmp')<>0 then
         begin
-        xtrack:=xtrack-seticons[getindexicon('plsup.jpg')].width-plset.upiconsm;
+        xtrack:=xtrack-seticons[getindexicon('plsup.bmp')].width-plset.upiconsm;
         plstrackcor[i,17]:=xtrack;
         plstrackcor[i,18]:=Ystr+plset.uptracktop;
-        plstrackcor[i,19]:=xtrack+seticons[getindexicon('plsup.jpg')].width;
-        plstrackcor[i,20]:=Ystr+seticons[getindexicon('plsup.jpg')].height+plset.uptracktop;
-        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.uptracktop,playericon[getindexicon('plsup.jpg')]);
+        plstrackcor[i,19]:=xtrack+seticons[getindexicon('plsup.bmp')].width;
+        plstrackcor[i,20]:=Ystr+seticons[getindexicon('plsup.bmp')].height+plset.uptracktop;
+        SinglePlayerGUI.Canvas.Draw(xtrack,Ystr+plset.uptracktop,playericon[getindexicon('plsup.bmp')]);
         end;
        end;
      Ystr:=Ystr+plset.trackvertsm;
@@ -9705,7 +9507,7 @@ SinglePlayerGUI.Canvas.Font.Color:=plset.curentdirplcolor;
 SinglePlayerGUI.Canvas.Font.Size:=plset.curentdirplsize;
 if fileexists(curenttrack) then
  begin
-  curpldir:=ExtractFilepath(UTF8Encode(curenttrack));
+  curpldir:=ExtractFilepath(ansitoutf8(curenttrack));
   if curpldir[length(curpldir)]='\' then delete(curpldir,length(curpldir),1);
   curpldir:=ExtractFileName(curpldir);
  end;
@@ -9716,13 +9518,13 @@ begin
 
  SinglePlayerGUI.Canvas.Font.Color:=plset.tracktitlecolor;
  SinglePlayerGUI.Canvas.Font.Size:=plset.tracktitlesize;
- if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,UTF8Encode(artisttitle),TextStyle) else
- SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,UTF8Encode(artisttitle));
+ if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,ansitoutf8(artisttitle),TextStyle) else
+ SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,ansitoutf8(artisttitle));
 
  if SinglePlayerSettings.track2str=1 then
   begin
-   if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,UTF8Encode(scrolltitlestr),TextStyle) else
-   SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,UTF8Encode(scrolltitlestr));
+   if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,ansitoutf8(scrolltitlestr),TextStyle) else
+   SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,ansitoutf8(scrolltitlestr));
   end;
 
 end;
@@ -9744,22 +9546,18 @@ SinglePlayerGUI.Canvas.Font.Color:=plset.statustextcolor;
 SinglePlayerGUI.Canvas.Font.Size:=plset.statustextsize;
  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.statustextleft,getfromlangpack('searchtrack'),1),plset.statustexttop,getfromlangpack('searchtrack'));
 end;
-if (coverloaded=1) then begin
-   if (coverimg<>nil) and (SinglePlayerSettings.showcoverpl=1) {and (PictureFrames.Count<>0)} then
-   begin
-        coverimgot.Canvas.StretchDraw(classes.Rect(0, 0, plset.coverwidth, plset.coverheight),coverimg);
-        coverimgot.SetSize(plset.coverwidth, plset.coverheight);
-        SinglePlayerGUI.Canvas.Draw(plset.coverinplayerleft,plset.coverinplayertop,coverimgot);
-   end;
+if (coverimg<>nil) and (SinglePlayerSettings.showcoverpl=1) and (coverloaded=1) and ((mode=play) or (mode=Paused)) {and (PictureFrames.Count<>0)} then
+begin
+ coverimgot.Canvas.StretchDraw(classes.Rect(0, 0, plset.coverwidth, plset.coverheight),coverimg);
+ coverimgot.SetSize(plset.coverwidth, plset.coverheight);
+ SinglePlayerGUI.Canvas.Draw(plset.coverinplayerleft,plset.coverinplayertop,coverimgot);
 end;
-{if (coverloaded=2) then begin
-   if (coverimgPNG<>nil) and (SinglePlayerSettings.showcoverpl=1) {and (PictureFrames.Count<>0)} then
-   begin
-        coverimgotPNG.Canvas.StretchDraw(classes.Rect(0, 0, plset.coverwidth, plset.coverheight),coverimgPNG);
-        coverimgotPNG.SetSize(plset.coverwidth, plset.coverheight);
-        SinglePlayerGUI.Canvas.Draw(plset.coverinplayerleft,plset.coverinplayertop,coverimgotPNG);
-   end;
-end;}
+if (coverimgRadio<>nil) and (SinglePlayerSettings.showcoverpl=1) and (radiocoverloaded=1) and ((mode=radioplay) or (mode=Paused)) {and (PictureFrames.Count<>0)} then
+begin
+ coverimgotRadio.Canvas.StretchDraw(classes.Rect(0, 0, plset.coverwidth, plset.coverheight),coverimgRadio);
+ coverimgotRadio.SetSize(plset.coverwidth, plset.coverheight);
+ SinglePlayerGUI.Canvas.Draw(plset.coverinplayerleft,plset.coverinplayertop,coverimgotRadio);
+end;
 end;
 
 procedure itelmaprogressbar(itchan:DWORD);
@@ -10157,13 +9955,11 @@ end;
 
 procedure TSinglePlayerGUI.vizualizationTimerTimer(Sender: TObject);
 begin
-   if powerup=0 then SinglePlayerGUI.Invalidate;
+   if powerup=0 then SinglePlayerGUI.invalidate;
 end;
 
 procedure reloadcfg;
 begin
-PlayerSettingsINI.Free;
-PlayerSettingsINI := TINIFile.Create(SinglePlayerDir+'playersettings.ini');
 SinglePlayerGUI.canvas.pen.Color:=$0000FF;
 SinglePlayerGUI.canvas.Brush.Color:=$000000;
 SinglePlayerGUI.canvas.RoundRect(330,230,480,270,30,20);
@@ -10226,8 +10022,7 @@ begin
  msgskinchangeleftX2:=700;
  msgskinchangeleftY:=270;
  msgskinchangeleftY2:=310;
-
- if fileexists(SinglePlayerDir+SinglePlayerSettings.skindir+workskin+'\icons\preview.jpg') then SinglePlayerGUI.Canvas.Draw(50,95,prewskin);
+ if fileexists(SinglePlayerDir+SinglePlayerSettings.skindir+workskin+'\icons\preview.bmp') then SinglePlayerGUI.Canvas.Draw(50,95,prewskin);
  if fileexists(SinglePlayerDir+SinglePlayerSettings.skindir+workskin+'\skcfg.cfg') then
   begin
    SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),470,100,getfromlangpack('name')+skinname,textstyle);
@@ -10275,9 +10070,8 @@ for i:=1 to allicons do
   seticons[i].width:=0;
   seticons[i].height:=0;
  end;
-skinsettings.Free;
 SinglePlayerSettings.skin:=skinname;
-if PlayerSettingsINI.ReadString('SinglePlayer','skin','-')<>SinglePlayerSettings.skin then PlayerSettingsINI.WriteString('SinglePlayer','skin',SinglePlayerSettings.skin);
+//if IniReadString(SettIniMas,'SinglePlayer','skin','-')<>SinglePlayerSettings.skin then PlayerSettingsINI.WriteString('SinglePlayer','skin',SinglePlayerSettings.skin);
 LoadPlayerSkin(0);
 LoadIconPlayer;
 msgtap:=0;
@@ -10439,7 +10233,7 @@ procedure findmarkedp.Execute;
 var
  plfile:textfile;
 const
-  ArrExt : array[1..6] of ansistring = ( '.mp3', '.wav','.ogg','.flac','.aiff','.m4a');
+  ArrExt : array[1..7] of ansistring = ( '.mp3', '.wav','.ogg','.flac','.aiff','.m4a','.mpc');
 begin
   EnumFolders(findmarked.findddir, ArrExt, plfile{%H-},1);
   scanningstr:='';
@@ -10499,7 +10293,7 @@ if nextplayplsshow=1 then         //отображать окно очереди
         findtrackcor[finded2,5]:=topfind+plset.vertrasfind+plset.searchrespolebottom;
         SinglePlayerGUI.canvas.RoundRect(findtrackcor[finded2,2],findtrackcor[finded2,3],findtrackcor[finded2,4],findtrackcor[finded2,5],0,0);
         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind,topfind,inttostr(i));
-        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+50,topfind,UTF8Encode(ExtractFileName(nextplaytrackmass[i])),textstyle);
+        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+50,topfind,ansitoutf8(ExtractFileName(nextplaytrackmass[i])),textstyle);
         inc(finded2);
         inc(topfind,plset.vertrasfind);
      end else break;  //если строки не вмещаются, остановить  поиск
@@ -10557,7 +10351,7 @@ if singleplayersettings.inallpls=0 then //искать в текущем пле�
  begin
   for i:=1 to singleplayersettings.kolltrack do
    begin
-    if pos(trim(tracksearchstr),UTF8Encode(ansiUpperCase(changefileext(ExtractFileName(track[i]),''))))<>0 then
+    if pos(trim(tracksearchstr),ansitoutf8(ansiUpperCase(changefileext(ExtractFileName(track[i]),''))))<>0 then
      begin
       if nachfind<>finded then
         begin
@@ -10574,7 +10368,7 @@ if singleplayersettings.inallpls=0 then //искать в текущем пле�
        begin
         SinglePlayerGUI.canvas.RoundRect(findtrackcor[finded2,2],findtrackcor[finded2,3],findtrackcor[finded2,4],findtrackcor[finded2,5],0,0);
         SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind,topfind,inttostr(i));
-        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+50,topfind,UTF8Encode(ExtractFileName(track[i])),textstyle);
+        SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+50,topfind,ansitoutf8(ExtractFileName(track[i])),textstyle);
        end;
       inc(finded2);
       inc(topfind,plset.vertrasfind);
@@ -10584,7 +10378,7 @@ if singleplayersettings.inallpls=0 then //искать в текущем пле�
   begin
   for i:=1 to length(allplstrack)-1 do
    begin
-      if pos(trim(tracksearchstr),UTF8Encode(ansiUpperCase(changefileext(ExtractFileName(allplstrack[i].Track),''))))<>0 then
+      if pos(trim(tracksearchstr),ansitoutf8(ansiUpperCase(changefileext(ExtractFileName(allplstrack[i].Track),''))))<>0 then
        begin
         if nachfind<>finded then
           begin
@@ -10601,7 +10395,7 @@ if singleplayersettings.inallpls=0 then //искать в текущем пле�
          begin
           SinglePlayerGUI.canvas.RoundRect(findtrackcor[finded2,2],findtrackcor[finded2,3],findtrackcor[finded2,4],findtrackcor[finded2,5],0,0);
           SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind,topfind,inttostr(allplstrack[i].Playlist)+' '+inttostr(allplstrack[i].Number));
-          SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+70,topfind,UTF8Encode(ExtractFileName(allplstrack[i].Track)),textstyle);
+          SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+70,topfind,ansitoutf8(ExtractFileName(allplstrack[i].Track)),textstyle);
          end;
         inc(finded2);
         inc(topfind,plset.vertrasfind);
@@ -10612,7 +10406,7 @@ if singleplayersettings.inallpls=0 then //искать в текущем пле�
   begin
      for i:=1 to length(tagmass)-1 do
       begin
-         if pos(trim(tracksearchstr),UTF8Encode(ansiUpperCase(tagmass[i,1])))<>0 then
+         if pos(trim(tracksearchstr),ansitoutf8(ansiUpperCase(tagmass[i,1])))<>0 then
           begin
          if nachfind<>finded then
            begin
@@ -10632,7 +10426,7 @@ if singleplayersettings.inallpls=0 then //искать в текущем пле�
              SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind,topfind,inttostr(i))
            else
              SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind,topfind,tagmass[i,3]+' '+tagmass[i,4]);
-           SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+70,topfind,UTF8Encode(tagmass[i,1]),textstyle);
+           SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+70,topfind,ansitoutf8(tagmass[i,1]),textstyle);
           end;
          inc(finded2);
          inc(topfind,plset.vertrasfind);
@@ -10661,10 +10455,10 @@ if entertrack<>0 then
    begin
     if singleplayersettings.searchintag=0 then
      begin
-      if singleplayersettings.inallpls=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+50,findtrackcor[entertrack,3]-plset.searchrespoletop,UTF8Encode(ExtractFileName(track[findtrackcor[entertrack,1]])),textstyle) else
-      SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+70,findtrackcor[entertrack,3]-plset.searchrespoletop,UTF8Encode(ExtractFileName(allplstrack[findtrackcor[entertrack,1]].Track)),textstyle);
-     end else SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+70,findtrackcor[entertrack,3]-plset.searchrespoletop,UTF8Encode(ExtractFileName(tagmass[findtrackcor[entertrack,1],2])),textstyle);
-   end else SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+50,findtrackcor[entertrack,3]-plset.searchrespoletop,UTF8Encode(ExtractFileName(nextplaytrackmass[findtrackcor[entertrack,1]])),textstyle);
+      if singleplayersettings.inallpls=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+50,findtrackcor[entertrack,3]-plset.searchrespoletop,ansitoutf8(ExtractFileName(track[findtrackcor[entertrack,1]])),textstyle) else
+      SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+70,findtrackcor[entertrack,3]-plset.searchrespoletop,ansitoutf8(ExtractFileName(allplstrack[findtrackcor[entertrack,1]].Track)),textstyle);
+     end else SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+70,findtrackcor[entertrack,3]-plset.searchrespoletop,ansitoutf8(ExtractFileName(tagmass[findtrackcor[entertrack,1],2])),textstyle);
+   end else SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),plset.leftfind+50,findtrackcor[entertrack,3]-plset.searchrespoletop,ansitoutf8(ExtractFileName(nextplaytrackmass[findtrackcor[entertrack,1]])),textstyle);
 end;
 SinglePlayerGUI.Canvas.Font.Color:=plset.scanstatustextcolor;
 SinglePlayerGUI.Canvas.Font.Size:=plset.scanstatustextsize;
@@ -10677,9 +10471,9 @@ begin
  track:=lowercase(track);
  result:=changefileext(ExtractFileName(track),'');
  thisTagv2.Clear;
- if ((length(track)-pos('.flac',track)=4) and (pos('.flac',track)<>0)) or ((length(track)-pos('.m4a',track)=3) and (pos('.m4a',track)<>0)) then exit else thisTagv2.ReadFromFile(track);
+ if ((length(track)-pos('.flac',track)=4) and (pos('.flac',track)<>0)) or ((length(track)-pos('.m4a',track)=3) and (pos('.m4a',track)<>0)) or ((length(track)-pos('.mpc',track)=3) and (pos('.mpc',track)<>0)) then exit else thisTagv2.ReadFromFile(track);
  if (thisTagv2.Title='') and (thisTagv2.artist='') then exit;
- result:=UTF8Encode(thisTagv2.Artist)+' - '+UTF8Encode(thisTagv2.Title);
+ result:=thisTagv2.Artist+' - '+thisTagv2.Title;
 end;
 
 procedure formtagmass(mode:byte);
@@ -11678,6 +11472,7 @@ begin
        (pos('.wav',ansilowercase(tfstrmas[i]))<>0)  or
        (pos('.flac',ansilowercase(tfstrmas[i]))<>0) or
        (pos('.m4a',ansilowercase(tfstrmas[i]))<>0)  or
+       (pos('.mpc',ansilowercase(tfstrmas[i]))<>0)  or
        (pos('.aiff',ansilowercase(tfstrmas[i]))<>0) then cuetrack:=copy(tfstrmas[i], pos('FILE "',tfstrmas[i])+6, PosR2L('"',tfstrmas[i])-pos('FILE "',tfstrmas[i])-6);
       end;
      if pos('TRACK',tfstrmas[i])<>0 then
@@ -11702,6 +11497,7 @@ begin
         (pos('.wav',ansilowercase(tfstr))<>0)  or
         (pos('.flac',ansilowercase(tfstr))<>0) or
         (pos('.m4a',ansilowercase(tfstr))<>0)  or
+        (pos('.mpc',ansilowercase(tfstr))<>0)  or
         (pos('.aiff',ansilowercase(tfstr))<>0)) and
         (pos('http',ansilowercase(tfstr))=0) then
       begin
@@ -11751,13 +11547,13 @@ procedure PlayerExit;                  //закрыть плеер
 begin
  if SinglePlayerSettings.savepos=1 then
   begin
-   PlayerSettingsINI.WriteInteger('SinglePlayer','curpos',bass_ChannelGetPosition(channel,0));
+//   PlayerSettingsINI.WriteInteger('SinglePlayer','curpos',bass_ChannelGetPosition(channel,0));
    SinglePlayerSettings.curpos:=bass_ChannelGetPosition(channel,0);
   end;
- if (SinglePlayerSettings.startautoplay=1) then
+{ if (SinglePlayerSettings.startautoplay=1) then
   begin
    if mode=radioplay then PlayerSettingsINI.Writestring('SinglePlayer','lasturl',curenttrack) else PlayerSettingsINI.Writestring('SinglePlayer','lasturl','');
-  end;
+  end;}
  if mode<>closed then
   begin
    mode:=closed;    //установить статус плеера - выключен
@@ -11784,14 +11580,53 @@ end;
 procedure TSinglePlayerGUI.FormDestroy(Sender: TObject);
 begin
  if mode<>closed then PlayerExit;
- PlayerSettingsINI.Free;
- SkinSettings.Free;
  senderstr('SP_Exit');
  {$IFDEF SP_STANDALONE}
  LoadingGUI.Close;
  MMCCore.Close;
  {$ENDIF}
 end;
+
+
+
+{$IFDEF SP_STANDALONE}
+procedure checkexplorer;
+begin
+ if (checktask(SinglePlayerSettings.altmenu)=0) and (CheckTask('explorer.exe')=0) then LaunchProcess('explorer.exe');
+ ShowWindow(SinglePlayerGUI.Handle, SW_HIDE);
+ MMCCore.hide;
+ LoadingGUI.hide;
+end;
+
+function CheckTask (ExeFileName: string): Integer;
+begin
+  {$IFDEF WInCE}
+  result:=0;
+  FS:=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);
+  FP.dwSize:=Sizeof(FP);
+  Co:=Process32First(FS,FP);
+  while integer(Co)<>0 do
+  begin
+    if ((UpperCase(ExtractFileName(FP.szExeFile))=UpperCase(ExeFileName)) or
+       (UpperCase(FP.szExeFile)=UpperCase(ExeFileName))) then Result:=1;
+    Co:=Process32Next(FS,FP);
+  end;
+  CloseToolhelp32Snapshot(FS);
+  {$ENDIF}
+end;
+
+function LoadBMP(Path: String): HBITMAP;
+var WS: WideString;
+begin
+  WS:=Path;
+  {$IFDEF WInCE}
+  Result:=SHLoadDIBitmap(PWideChar(WS));
+  {$ELSE}
+  Result:=LoadImageW(0,PWideChar(WS),IMAGE_BITMAP,0,0,LR_LOADFROMFILE);
+  {$ENDIF}
+end;
+{$ENDIF}
+
 
 initialization
 

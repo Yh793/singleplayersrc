@@ -1,9 +1,3 @@
-{
-Author of the code: alex208210.
-SinglePlayer code is distributed under Mozilla Public Licence, which means, in short, that it is free for both freeware and commercial use.You can use it in products with closed or open-source freely. The only requirements are:
-1) Acknowledge SinglePlayer code is used somewhere in your application (in an about box, credits page or printed manual, etc. with at least a link to http://singleplayer.coddism.com/)
-2) Modifications made to SinglePlayer code must be made public (no need to publish the full code, only to state which parts were altered, and how), but feel welcome to open-source your code if you so wish.
-}
 unit core;
 
 {$mode delphi}{$H+}
@@ -33,6 +27,9 @@ type
     { public declarations }
   end;
 
+type
+TIniMas = array of string;
+
 var
   MMCCore: TMMCCore;
   FS, FSnapshotHandle: THandle;
@@ -42,14 +39,19 @@ var
   pi: TPROCESSINFORMATION;
   ShortTap:boolean;
 
-procedure checkexplorer;
+
 procedure RunSaver;
-function CheckTask (ExeFileName: string): Integer;
 function KillTask (ExeFileName: string): Integer;
 function LaunchProcess(const APath: String; ACmdLine: String = ''): Boolean;
 function EnumProc (Wd: HWnd; Param: LongInt): Boolean; stdcall;
 procedure GetTap;
-procedure SleepAndProcess(X: DWord);
+procedure IniSelectSection(var IniMas: TIniMas; Section: String; var SFrom: Integer; var STo: Integer);
+function IniReadInteger(var IniMas: TIniMas; Section, Value: String; Def: Integer; SFrom: Integer = 0; STo: Integer = 0): Integer;
+function IniReadString(var IniMas: TIniMas; Section, Value, Def: String; SFrom: Integer = 0; STo: Integer = 0): String;
+procedure LoadIni (Path: String; var IniMas: TIniMas);
+function TrimGarbage(const S: String): String;
+function TrimCommas(const S: String): String;
+
 
 implementation
 
@@ -57,13 +59,6 @@ uses singleplayer, loading;
 
 {$R *.lfm}
 
-procedure checkexplorer;
-begin
- if (checktask(SinglePlayerSettings.altmenu)=0) and (CheckTask('explorer.exe')=0) then LaunchProcess('explorer.exe');
- ShowWindow(SinglePlayerGUI.Handle, SW_HIDE);
- MMCCore.hide;
- LoadingGUI.hide;
-end;
 
 procedure RunSaver;
 begin
@@ -96,23 +91,6 @@ begin
     CloseToolhelp32Snapshot(FSnapshotHandle);
   except
   end;
-  {$ENDIF}
-end;
-
-function CheckTask (ExeFileName: string): Integer;
-begin
-  {$IFDEF WInCE}
-  result:=0;
-  FS:=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);
-  FP.dwSize:=Sizeof(FP);
-  Co:=Process32First(FS,FP);
-  while integer(Co)<>0 do
-  begin
-    if ((UpperCase(ExtractFileName(FP.szExeFile))=UpperCase(ExeFileName)) or
-       (UpperCase(FP.szExeFile)=UpperCase(ExeFileName))) then Result:=1;
-    Co:=Process32Next(FS,FP);
-  end;
-  CloseToolhelp32Snapshot(FS);
   {$ENDIF}
 end;
 
@@ -158,8 +136,8 @@ begin
     SinglePlayer.PlayerExit;
     MMCCore.checkpidtimer.Enabled:=false;
    end;
-  singleplayerGUI.pubtracktitle.Caption:=ansitoutf8(delbanner(artist+title));
-  senderstr(delbanner(artist+title));
+  singleplayerGUI.pubtracktitle.Caption:=ansitoutf8(delbanner(artist+'|'+title));
+  senderstr(delbanner(artist+'|'+title));
 end;
 
 procedure TMMCCore.FormCreate(Sender: TObject);
@@ -200,12 +178,121 @@ begin
   else ShortTap:=False;
 end;
 
-procedure SleepAndProcess(X: DWord);
-var CurrentTick: DWord;
+function IniReadString(var IniMas: TIniMas; Section, Value, Def: String; SFrom: Integer = 0; STo: Integer = 0): String;
+var I, StartI, EndI: Integer;
+    FlagStart: Boolean;
+    Header: String;
 begin
-  CurrentTick:=GetTickCount();
-  while ((GetTickCount()-CurrentTick)<=X) do Application.ProcessMessages; // Sleep, но с обработкой сообщений
+  Result:=Def;
+  FlagStart:=False;
+  EndI:=Length(IniMas)-1;
+  Header:='['+Section+']';
+  if (EndI<1) then Exit;
+  if (SFrom>0) then
+  begin
+    if (STo>SFrom) then
+    begin
+      FlagStart:=True;
+      StartI:=SFrom;
+      EndI:=STo;
+    end;
+  end
+  else
+  for I:=0 to Length(IniMas)-1 do
+  begin
+    if (Header=IniMas[I]) then
+    begin
+      FlagStart:=True;
+      StartI:=I;
+      Continue;
+    end;
+    if FlagStart then if (Length(IniMas[I])>0) then if (IniMas[I][1]='[') and (IniMas[I][Length(IniMas[I])]=']') then
+    begin
+      EndI:=I;
+      Break;
+    end;
+  end;
+  if FlagStart then for I:=StartI+1 to EndI do if (Pos(Value+'=',IniMas[I])=1) then
+   begin
+     Result:=System.Copy(IniMas[I],Pos('=',IniMas[I])+1,99999);
+     Break;
+   end;
+   Result:=TrimCommas(TrimGarbage(Result));
 end;
+
+function IniReadInteger(var IniMas: TIniMas; Section, Value: String; Def: Integer; SFrom: Integer = 0; STo: Integer = 0): Integer;
+begin
+  Result:=StrToIntDef(IniReadString(IniMas, Section, Value, IntToStr(Def), SFrom, STo),Def);
+end;
+
+procedure IniSelectSection(var IniMas: TIniMas; Section: String; var SFrom: Integer; var STo: Integer);
+var I, EndI: Integer;
+    Header: String;
+    FlagStart: Boolean;
+begin
+  EndI:=Length(IniMas)-1;
+  STo:=EndI;
+  SFrom:=0;
+  Header:='['+Section+']';
+  FlagStart:=False;
+  if (EndI<1) then Exit;
+  for I:=0 to Length(IniMas)-1 do
+  begin
+    if (Pos(Header,IniMas[I])>0) then
+    begin
+      FlagStart:=True;
+      SFrom:=I;
+      Continue;
+    end;
+    if FlagStart then if (Length(IniMas[I])>0) then if (IniMas[I][1]='[') and (IniMas[I][Length(IniMas[I])]=']') then
+    begin
+      STo:=I;
+      Break;
+    end;
+  end;
+  if (SFrom=0) then STo:=0;
+end;
+
+procedure LoadIni (Path: String; var IniMas: TIniMas);
+var F: Text;
+    CounterF: Integer;
+begin
+  SetLength(IniMas,0);
+  try
+    AssignFile(F,Path);
+    Reset(F);
+    CounterF:=0;
+    while not EOF(F) do
+    begin
+      Inc(CounterF);
+      SetLength(IniMas,CounterF);
+      ReadLn(F,IniMas[CounterF-1]);
+    end;
+    CloseFile(F);
+  except
+  end;
+end;
+
+function TrimGarbage(const S: String): String;
+const GarbageSymbols = [#0..' '];
+var Ist, IEnd: Integer;
+begin
+  IEnd:=Length(S);
+  while ((IEnd>0) and (S[IEnd] in GarbageSymbols)) do Dec(IEnd);
+  ISt:=1;
+  while ((ISt<=IEnd) and (S[ISt] in GarbageSymbols)) do Inc(ISt);
+  Result:=Copy(S,ISt,1+IEnd-ISt);
+end;
+
+function TrimCommas(const S: String): String;
+begin
+  Result:=S;
+  if Length(S)<2 then Exit;
+  if ((S[1]='"') and (S[Length(S)]='"')) then Result:=Copy(S,2,Length(S)-2);
+end;
+
+
+
 
 end.
 

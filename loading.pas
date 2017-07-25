@@ -1,9 +1,3 @@
-{
-Author of the code: alex208210.
-SinglePlayer code is distributed under Mozilla Public Licence, which means, in short, that it is free for both freeware and commercial use.You can use it in products with closed or open-source freely. The only requirements are:
-1) Acknowledge SinglePlayer code is used somewhere in your application (in an about box, credits page or printed manual, etc. with at least a link to http://singleplayer.coddism.com/)
-2) Modifications made to SinglePlayer code must be made public (no need to publish the full code, only to state which parts were altered, and how), but feel welcome to open-source your code if you so wish.
-}
 unit loading;
 
 {$mode objfpc}{$H+}
@@ -33,7 +27,8 @@ type
 
 var
   LoadingGUI: TLoadingGUI;
-  logoicon:TJPEGImage;
+  logoicon:graphics.tbitmap;
+  logoiconP:Tpicture;
 
 implementation
 
@@ -55,13 +50,13 @@ end;
 
 procedure TLoadingGUI.FormPaint(Sender: TObject);
 begin
- if fileexists(ExtractFilePath(ParamStr(0))+'logo.jpg') then LoadingGUI.Canvas.Draw(0,0,logoicon);
+ if fileexists(ExtractFilePath(ParamStr(0))+'logo.bmp') then LoadingGUI.Canvas.Draw(0,0,logoiconP.bitmap);
  label1.Caption:='v'+singleplayer.playerversion;
 end;
 
 procedure TLoadingGUI.FormShow(Sender: TObject);
 begin
- if fileexists(ExtractFilePath(ParamStr(0))+'logo.jpg') then image1.Visible:=false;
+ if fileexists(ExtractFilePath(ParamStr(0))+'logo.bmp') then image1.Visible:=false;
 end;
 
 end.
