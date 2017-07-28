@@ -9793,13 +9793,17 @@ begin
 
  SinglePlayerGUI.Canvas.Font.Color:=plset.tracktitlecolor;
  SinglePlayerGUI.Canvas.Font.Size:=plset.tracktitlesize;
- if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,UTF8Encode(artisttitle),TextStyle) else
- SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,UTF8Encode(artisttitle));
+ if SinglePlayerSettings.scrolltrack=0 then
+ 	SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,1)+pr2,plset.trackartisttitletop,artisttitle,TextStyle)
+ else
+ 	SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.trackartisttitletop+SinglePlayerGUI.Canvas.TextHeight(artisttitle)),myalign(plset.tracktitleleft,artisttitle,0)+pr2,plset.trackartisttitletop,artisttitle);
 
  if SinglePlayerSettings.track2str=1 then
   begin
-   if SinglePlayerSettings.scrolltrack=0 then SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,UTF8Encode(scrolltitlestr),TextStyle) else
-   SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,UTF8Encode(scrolltitlestr));
+	if SinglePlayerSettings.scrolltrack=0 then
+   		SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,1)+pr4,plset.tracktitletop,scrolltitlestr,TextStyle)
+    else
+   		SinglePlayerGUI.Canvas.TextRect(classes.Rect(myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,StrToInt(plset.tracktitleleft)+plset.tracktitlewidth,plset.tracktitletop+SinglePlayerGUI.Canvas.TextHeight(scrolltitlestr)),myalign(plset.tracktitleleft,scrolltitlestr,0)+pr4,plset.tracktitletop,scrolltitlestr);
   end;
 
 end;
