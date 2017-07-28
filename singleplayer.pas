@@ -693,7 +693,6 @@ function LoadBMP(Path: String): HBITMAP;
 var
   SinglePlayerGUI: TSinglePlayerGUI;
   TextStyle: TTextStyle;
-  updating:integer;
   curentpage,SinglePlayerDir,curenttrack,curworkusb,playerversion,napr,curworktrack,oldpage,curentradio,curentdir,cpuinfo,artist,title,bitratestr,tstr,timetrack,
   strpos,curpldir,strcureq,strkolcurtr,curvol,scrolltitle,artisttitle,curworkskin,skinname,skinauthor,skinversion,timeinicon,scrolltitlestr,scrolltitle2,
   dateinicon,scanningstr,tracksearchstr,playerversionstr,effectstr,radioimage,conradiostr:string;
@@ -782,6 +781,7 @@ var
   SkinSettingsIniMas:array of String;
   SP_SettIniMas: TIniMas;
   SP_SkinIniMas: array[0..allicons] of TIniMas;
+  PlayerSettingsINI:TIniFile;
 
 implementation
 
@@ -810,6 +810,8 @@ begin
  SetBeginPlayer;              //установка начальных значений переменных
  LoadingGUI.LabelText.Caption:='Загрузка SinglePlayer: Чтение настроек плеера';
  LoadingGUI.LabelText.Refresh;
+ PlayerSettingsINI:=TIniFile.Create(SinglePlayerDir+'playersettings.ini');  // инициализируем объект для работы с сохранениями
+ PlayerSettingsINI.CacheUpdates:=True;
  LoadPlayerSettings;          //считываем настройки плеера
  LoadingGUI.LabelText.Caption:='Загрузка SinglePlayer: Загрузка языкового пакета';
  LoadingGUI.LabelText.Refresh;
@@ -832,12 +834,12 @@ begin
   begin
    if mode=closed then SinglePlayerStart;
   end;
- { {$IFDEF SP_STANDALONE}
-  setforegroundwindow(SinglePlayerGUI.Handle);
-  BringWindowToTop(SinglePlayerGUI.Handle);
-  SetWindowPos(SinglePlayerGUI.Handle,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE+SWP_NOSIZE);
-  SinglePlayerGUI.SetFocus;
-  {$endif}   }
+  //{$IFDEF SP_STANDALONE}
+  //setforegroundwindow(SinglePlayerGUI.Handle);
+  //BringWindowToTop(SinglePlayerGUI.Handle);
+  //SetWindowPos(SinglePlayerGUI.Handle,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE+SWP_NOSIZE);
+  //SinglePlayerGUI.SetFocus;
+  //{$endif}
   senderstr('show');
 end;
 
@@ -1446,10 +1448,7 @@ end;
 Procedure WritePlayerSettings;    //записываем настройки плеера в ini файл
 var
   i:integer;
-  PlayerSettingsINI:TIniFile;
 begin
-   PlayerSettingsINI:=TIniFile.Create(SinglePlayerDir+'playersettings.ini');
-   PlayerSettingsINI.CacheUpdates:=True;
    PlayerSettingsINI.WriteString('SinglePlayer','skin',SinglePlayerSettings.skin);
    PlayerSettingsINI.WriteString('SinglePlayer','skindir',SinglePlayerSettings.skindir);
    PlayerSettingsINI.WriteString('SinglePlayer','lang',SinglePlayerSettings.langg);
@@ -1542,7 +1541,7 @@ begin
     end;
 
    PlayerSettingsINI.UpdateFile;
-   PlayerSettingsINI.Free;
+   //PlayerSettingsINI.Free;
 end;
 
 
@@ -6237,30 +6236,26 @@ end;
 
 procedure playertimercode;
 var
-  Timetrstr:single;
-  i:integer;
-  PlayerSettingsINI:TIniFile;
+  	Timetrstr:single;
+  	i:integer;
 begin
- updating:=1;
- try
+	try
 	if singleplayersettings.savepos = 1 then
-	    begin
-         PlayerSettingsINI:=TIniFile.Create(SinglePlayerDir+'playersettings.ini');
-   		 PlayerSettingsINI.CacheUpdates:=True;
-	     PlayerSettingsINI.WriteInteger('SinglePlayer','playedtrack',SinglePlayerSettings.playedtrack);
-	     PlayerSettingsINI.WriteInteger('SinglePlayer','curpos',bass_ChannelGetPosition(channel,0));
-	     PlayerSettingsINI.WriteInteger('SinglePlayer','curentplaylist',SinglePlayerSettings.curentplaylist);
-	     PlayerSettingsINI.WriteString('SinglePlayer','curentdir',curentdir);
-	     for i:=1 to kollpls do
-	       begin
-	        if fileexists(SinglePlayerDir+'playlist_'+inttostr(i)+'.pls') then
-	         begin
-              	plscurtrackpos[i,1]:=IniReadInteger(SP_SettIniMas,'playlist_'+inttostr(i),'curtrack',1);
-          		plscurtrackpos[i,2]:=IniReadInteger(SP_SettIniMas,'playlist_'+inttostr(i),'curpos',-1);
-	         end;
-	       end;
-	    end;
-	  PlayerSettingsINI.UpdateFile;
+	begin
+		PlayerSettingsINI.WriteInteger('SinglePlayer','playedtrack',SinglePlayerSettings.playedtrack);
+		PlayerSettingsINI.WriteInteger('SinglePlayer','curpos',bass_ChannelGetPosition(channel,0));
+		PlayerSettingsINI.WriteInteger('SinglePlayer','curentplaylist',SinglePlayerSettings.curentplaylist);
+		PlayerSettingsINI.WriteString('SinglePlayer','curentdir',curentdir);
+		for i:=1 to kollpls do
+		begin
+			if fileexists(SinglePlayerDir+'playlist_'+inttostr(i)+'.pls') then
+			begin
+				plscurtrackpos[i,1]:=IniReadInteger(SP_SettIniMas,'playlist_'+inttostr(i),'curtrack',1);
+				plscurtrackpos[i,2]:=IniReadInteger(SP_SettIniMas,'playlist_'+inttostr(i),'curpos',-1);
+			end;
+		end;
+	end;
+	PlayerSettingsINI.UpdateFile;
 
   if SinglePlayerSettings.showcpu=1 then cpuinfo:=realtostr(BASS_GetCPU,2);
   if (mode=play) then if (BASS_ChannelIsActive(channel)=BASS_ACTIVE_STOPPED) then playnexttrack;
@@ -6352,7 +6347,6 @@ begin
  except
    LogAndExitPlayer('Ошибка в процедуре playertimerplay',0,0);
  end;
- updating:=0;
 end;
 
 procedure TSinglePlayerGUI.WndProc(var Msg: TMessage);
@@ -6480,7 +6474,7 @@ end;
 
 procedure SendCopyData(hTargetWnd: HWND; ACopyDataStruct:TCopyDataStruct);
 begin
-  if hTargetWnd<>0 then SendMessage(hTargetWnd, WM_COPYDATA, longint(SinglePlayerGUI.Handle), {%H-}Longint(@ACopyDataStruct));
+  if hTargetWnd<>0 then PostMessage(hTargetWnd, WM_COPYDATA, longint(SinglePlayerGUI.Handle), {%H-}Longint(@ACopyDataStruct));    //SendMessage
 end;
 
 procedure setplaypos(progresspos:integer);
@@ -6711,7 +6705,6 @@ var
   errortrack:integer;
 begin
  try
- while updating=1 do;
  coverimgot.Clear;
  coverimgot.SetSize(0,0);
  coverimg.Clear;
