@@ -1585,7 +1585,7 @@ begin
     clickedicon:=i;
     PolSecondTimer.Enabled:=false;
     if seticons[i].clickiconcaption<>'' then SinglePlayerGUI.Canvas.Draw(seticons[i].left, seticons[i].top, clickplayericon[i]);
-    if seticons[i].text<>'' then
+    if (seticons[i].text<>'') then
       begin
        textformsize:=SinglePlayerGUI.Canvas.Font.Size;
        textformbold:=SinglePlayerGUI.Canvas.Font.Bold;
@@ -5012,6 +5012,7 @@ begin
  if pos('%nomplaytrack%',str) <> 0 then str:=replacestr(str,'%nomplaytrack%',paintstr('%nomplaytrack%'));
  if pos('%curplaylist%',str) <> 0 then str:=replacestr(str,'%curplaylist%',paintstr('%curplaylist%'));
  if pos('%kolltrack%',str) <> 0 then str:=replacestr(str,'%kolltrack%',paintstr('%kolltrack%'));
+ if pos(' / 0',str) <> 0 then str:='';
  if pos('%skinname%',str) <> 0 then str:=replacestr(str,'%skinname%',paintstr('%skinname%'));
  if pos('%curpage%',str) <> 0 then str:=replacestr(str,'%curpage%',paintstr('%curpage%'));
  if pos('%datetime%',str) <> 0 then str:=replacestr(str,'%datetime%',paintstr('%datetime%'));
@@ -5028,6 +5029,7 @@ begin
  if pos('%genreintrack%',str) <> 0 then str:=replacestr(str,'%genreintrack%',paintstr('%genreintrack%'));
  if pos('%albumintrack%',str) <> 0 then str:=replacestr(str,'%albumintrack%',paintstr('%albumintrack%'));
  if pos('%yearintrack%',str) <> 0 then str:=replacestr(str,'%yearintrack%',paintstr('%yearintrack%'));
+ if pos('()',str) <> 0 then str:=replacestr(str,'()','');
  if pos('%commentintrack%',str) <> 0 then str:=replacestr(str,'%commentintrack%',paintstr('%commentintrack%'));
  if pos('%curentsysvol%',str) <> 0 then str:=replacestr(str,'%curentsysvol%',paintstr('%curentsysvol%'));
  if pos('%radioconnect%',str) <> 0 then str:=replacestr(str,'%radioconnect%',paintstr('%radioconnect%'));
@@ -9753,15 +9755,18 @@ begin
 if (mode<>radioplay) and (mode<>Stop) then
 begin
   itelmaprogressbar(channel);
-  SinglePlayerGUI.Canvas.Font.Color:=plset.timetrackcolor;
-  SinglePlayerGUI.Canvas.Font.Size:=plset.timetracksize;
-  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.timetrackleft,timetrack,1),plset.timetracktop,timetrack);
-  SinglePlayerGUI.Canvas.Font.Color:=plset.tracktimecolor;
-  SinglePlayerGUI.Canvas.Font.Size:=plset.tracktimesize;
-  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.tracktimeleft,strpos,1),plset.tracktimetop,strpos);
-  SinglePlayerGUI.Canvas.Font.Color:=plset.playedtrackcolor;
-  SinglePlayerGUI.Canvas.Font.Size:=plset.playedtracksize;
-  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playedtrackleft,strkolcurtr,1),plset.playedtracktop,strkolcurtr);
+  if (timetrack<>'00:01') and (timetrack<>'00:00') then
+  begin
+	  SinglePlayerGUI.Canvas.Font.Color:=plset.timetrackcolor;
+	  SinglePlayerGUI.Canvas.Font.Size:=plset.timetracksize;
+	  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.timetrackleft,timetrack,1),plset.timetracktop,timetrack);
+	  SinglePlayerGUI.Canvas.Font.Color:=plset.tracktimecolor;
+	  SinglePlayerGUI.Canvas.Font.Size:=plset.tracktimesize;
+	  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.tracktimeleft,strpos,1),plset.tracktimetop,strpos);
+	  SinglePlayerGUI.Canvas.Font.Color:=plset.playedtrackcolor;
+	  SinglePlayerGUI.Canvas.Font.Size:=plset.playedtracksize;
+	  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),myalign(plset.playedtrackleft,strkolcurtr,1),plset.playedtracktop,strkolcurtr);
+  end;
 end;
 SinglePlayerGUI.Canvas.Font.Color:=plset.cureqcolor;
 SinglePlayerGUI.Canvas.Font.Size:=plset.cureqsize;
@@ -10246,10 +10251,11 @@ SinglePlayerGUI.Top:=0;
  progresscor[1,1]:=0;    {перечитываем координаты прогрессбара}
 end;
 
-procedure skinchangepaint;
+procedure skinchangepaint; //!!!
 var
   i:byte;
   lft,top,vertsm,horsm:integer;
+  bufskin:graphics.TBitmap;
 begin
  SinglePlayerGUI.Canvas.Font.Color:=$FFFFFF;
  SinglePlayerGUI.Canvas.Font.Size:=18;
@@ -10259,11 +10265,18 @@ begin
  horsm:=plset.skinspishorsm;                 //200
  for i:=1 to sk do
   begin
+ // 	bufskin:= graphics.tbitmap.Create;
+	//bufskin.Width  := 185;
+	//bufskin.Height := 111;
+	//bufskin.Handle:=loadbmp(UTF8Encode(SinglePlayerDir+SinglePlayerSettings.skindir+skinmass[i])+'\icons\preview_mini.bmp');
+ //   SinglePlayerGUI.Canvas.Draw(lft,top,bufskin);
+
     SinglePlayerGUI.Canvas.TextRect(classes.rect(0,0,800,480),lft,top,skinmass[i]);
     skincor[i,1]:=lft;
     skincor[i,2]:=lft+SinglePlayerGUI.Canvas.TextWidth(skinmass[i]);
     skincor[i,3]:=top;
     skincor[i,4]:=top+SinglePlayerGUI.Canvas.TextHeight(skinmass[i]);  //340
+
     if top+SinglePlayerGUI.Canvas.TextHeight('test')<plset.skinspisbottom then top:=top+SinglePlayerGUI.Canvas.TextHeight('test')+vertsm else
      begin
       top:=plset.skinspistop;
@@ -10273,18 +10286,18 @@ begin
   end;
 end;
 
-procedure setskinmsg(workskin:string);
+procedure setskinmsg(workskin:string);     //!!!
 begin
- SinglePlayerGUI.canvas.pen.Color:=$0000FF;
+ SinglePlayerGUI.canvas.pen.Color:=$999999;
  SinglePlayerGUI.canvas.Brush.Color:=$000000;
- SinglePlayerGUI.canvas.RoundRect(30,55,770,375,30,20);
- SinglePlayerGUI.canvas.Brush.Color:=$FFA500;
- SinglePlayerGUI.canvas.RoundRect(500,270,700,310,30,20);
- SinglePlayerGUI.canvas.RoundRect(500,320,700,360,30,20);
- SinglePlayerGUI.canvas.Font.Color:=$00FFFF;
+ SinglePlayerGUI.canvas.RoundRect(30,55,770,375,5,5);
+ SinglePlayerGUI.canvas.Brush.Color:=$111111;
+ SinglePlayerGUI.canvas.RoundRect(500,270,700,310,5,5);
+ SinglePlayerGUI.canvas.RoundRect(500,320,700,360,5,5);
+ SinglePlayerGUI.canvas.Font.Color:=$F0F0F0;
  SinglePlayerGUI.Canvas.Font.Size:=16;
  SinglePlayerGUI.Canvas.Font.Bold:=true;
- SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),560,278,getfromlangpack('select'));
+ SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),555,278,getfromlangpack('select'));
  SinglePlayerGUI.Canvas.TextRect(classes.Rect(0,0,800,480),560,328,getfromlangpack('cancel'));
 
 
