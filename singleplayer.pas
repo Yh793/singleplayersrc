@@ -7237,17 +7237,30 @@ begin
 	        end	else begin repeat // по дате
                	done:= True;
 		    	for j:= 0 to High(FileList) - 1 do begin
-			      	if DateList[j] > DateList[j + 1] then begin
-				        done:= False;
-				        tmp:= FileList[j];
-				        FileList[j]:= FileList[j + 1];
-				        FileList[j + 1]:= tmp;
+                    if (sortMode=1) then begin // если начала старые
+				      	if (DateList[j] > DateList[j + 1]) then begin
+					        done:= False;
+					        tmp:= FileList[j];
+					        FileList[j]:= FileList[j + 1];
+					        FileList[j + 1]:= tmp;
 
-				        TempDate:= DateList[j];
-				        DateList[j]:= DateList[j + 1];
-				        DateList[j + 1]:= TempDate;
-			      	end;
-                end;
+					        TempDate:= DateList[j];
+					        DateList[j]:= DateList[j + 1];
+					        DateList[j + 1]:= TempDate;
+				      	end;
+                    end else begin // если начала новые
+                        if (DateList[j] < DateList[j + 1]) then begin
+					        done:= False;
+					        tmp:= FileList[j];
+					        FileList[j]:= FileList[j + 1];
+					        FileList[j + 1]:= tmp;
+
+					        TempDate:= DateList[j];
+					        DateList[j]:= DateList[j + 1];
+					        DateList[j + 1]:= TempDate;
+				      	end;
+					end;
+				end;
 		  		until done;
         	end;
 		end;
