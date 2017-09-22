@@ -6260,7 +6260,8 @@ begin
 	PlayerSettingsINI.UpdateFile;
 
   if SinglePlayerSettings.showcpu=1 then cpuinfo:=realtostr(BASS_GetCPU,2);
-  if (mode=play) then if (BASS_ChannelIsActive(channel)=BASS_ACTIVE_STOPPED) then playnexttrack;
+  //if (mode=play) then if (BASS_ChannelIsActive(channel)=BASS_ACTIVE_STOPPED) then playnexttrack;
+  if (mode=play) then if ((BASS_ChannelBytes2Seconds(channel, BASS_ChannelGetLength(channel,BASS_POS_BYTE))-BASS_ChannelBytes2Seconds(channel, BASS_ChannelGetPosition(channel,BASS_POS_BYTE)))<1) then playnexttrack;
   if (mode=radioplay) then if (BASS_ChannelIsActive(radiochannel)=BASS_ACTIVE_STALLED) then RadioStreamDisconnected; //Crazzy
   {---------------------------------------------------------------------}
   genreb:=0;
