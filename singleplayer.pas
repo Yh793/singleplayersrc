@@ -173,6 +173,7 @@ type
     treeintervalhorz:smallint;
     treeintervalvert:smallint;
     treetype:byte;
+    sortmode:smallint;
     treetextX:smallint;
     treetextY:smallint;
     treeintervalverttree:smallint;
@@ -589,6 +590,9 @@ procedure createTreeObjects(disk:string; bufName:string; index:integer; marked:i
 procedure saveeq; //сохраняем значения эквалайзера для всех пресетов
 procedure exptree;    //отображать файлы и папки в виде списка
 procedure expsetka;   //отображать файлы и папки в виде сетки
+procedure sortabc;    //сортировать файлы и папки в алфавитном порядке
+procedure sortdate;   //сортировать файлы и папки по дате (сначала старые)
+procedure sortdateinv;   //сортировать файлы и папки по дате (сначала новые)
 procedure nextpls;
 procedure prevpls;
 procedure timetracknap;
@@ -726,8 +730,8 @@ var
   tagmass: array of array of string;
   m3uplsmass: array of array of string;
   nextplaytrackmass: array of string;
-  plsettingsznach: array [1..10,1..10] of string;
-  plsettingsmass: array [1..10,1..10] of string;
+  plsettingsznach: array [1..11,1..11] of string;
+  plsettingsmass: array [1..11,1..11] of string;
   eqfcor:array [1..kolleff,1..8] of smallint;
   plsettingscor: array [1..10,1..4] of smallint;
   skincor: array [1..kollskins,1..4] of smallint;
@@ -3190,6 +3194,9 @@ begin
             'prevfolder': begin playprevfolder; exit; end;
             'exptree': begin exptree; SinglePlayerGUI.Invalidate; exit; end;
             'expsetka': begin expsetka; SinglePlayerGUI.Invalidate; exit; end;
+            'sortabc': begin sortabc; gettree(curentdir,pospage[pageindex]); SinglePlayerGUI.Invalidate; exit; end;
+            'sortdate': begin sortdate; gettree(curentdir,pospage[pageindex]); SinglePlayerGUI.Invalidate; exit; end;
+            'sortdateinv': begin sortdateinv; gettree(curentdir,pospage[pageindex]); SinglePlayerGUI.Invalidate; exit; end;
             'nextpls': begin AfterSwipe:=0; nextpls;  SinglePlayerGUI.Invalidate; exit; end;
             'prevpls': begin AfterSwipe:=0; prevpls;  SinglePlayerGUI.Invalidate; exit; end;
             'shuffle': begin SinglePlayerSettings.shufflekey:=1; SinglePlayerSettings.playone:=0; plsettingsznach[2,3]:='0'; SinglePlayerGUI.invalidate; exit; end;
@@ -4084,6 +4091,7 @@ Procedure LoadPlayerSkin(mode:byte);
     plset.maxrighttree:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','maxrighttree',780);
     plset.textinterval:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','textinterval',2);
     plset.treetype:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetype',0);
+    plset.sortmode:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','sortmode',0);
     plset.treetextX:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetextX',0);
     plset.treetextY:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treetextY',0);
     plset.treeintervalverttree:=IniReadInteger(SP_SkinIniMas[0],'singleplayer','treeintervalverttree',0);
@@ -4618,6 +4626,22 @@ try
     setvisfromexec('exptree','true');
     setvisfromexec('expsetka','false');
    end;
+
+   	if plset.sortmode=0 then begin
+    	setvisfromexec('sortabc','true');
+    	setvisfromexec('sortdate','false');
+    	setvisfromexec('sortdateinv','false');
+   	end else begin
+    	if plset.sortmode=1 then begin
+	    	setvisfromexec('sortabc','false');
+	    	setvisfromexec('sortdate','true');
+	    	setvisfromexec('sortdateinv','false');
+        end else begin
+            setvisfromexec('sortabc','false');
+	    	setvisfromexec('sortdate','false');
+	    	setvisfromexec('sortdateinv','true');
+		end;
+	end;
 
   if SinglePlayerSettings.eqon=1 then
    begin
@@ -7173,7 +7197,6 @@ var
   	DateList : array of TDateTime;
     tmp,tmp2 : String;
     TempDate: TDateTime;
-    sortMode : integer;
     done: Boolean;
 begin
 	try
@@ -7222,9 +7245,9 @@ begin
 
         // делаем сортировку по названиям
         j:=0;
-        sortMode:=0;
+        //plset.sortmode:=0;
         if (High(FileList)>0) then begin
-         	if (sortMode=0) then begin repeat // по названию
+         	if (plset.sortmode=0) then begin repeat // по названию
 				tmp:=UpperCase(FileList[j]);
 				tmp2:=UpperCase(FileList[j+1]);
 				if tmp[1]>tmp2[1] then begin
@@ -7238,7 +7261,7 @@ begin
 	        end	else begin repeat // по дате
                	done:= True;
 		    	for j:= 0 to High(FileList) - 1 do begin
-                    if (sortMode=1) then begin // если начала старые
+                    if (plset.sortMode=1) then begin // если начала старые
 				      	if (DateList[j] > DateList[j + 1]) then begin
 					        done:= False;
 					        tmp:= FileList[j];
@@ -7735,6 +7758,25 @@ begin
  plsettingsznach[2,1]:=inttostr(plset.treetype);
 end;
 
+
+procedure sortabc;   //!!!
+begin
+ plset.sortmode:=1;
+ plsettingsznach[2,11]:=inttostr(plset.sortmode);
+end;
+
+procedure sortdate;
+begin
+ plset.sortmode:=2;
+ plsettingsznach[2,11]:=inttostr(plset.sortmode);
+end;
+
+procedure sortdateinv;
+begin
+ plset.sortmode:=0;
+ plsettingsznach[2,11]:=inttostr(plset.sortmode);
+end;
+
 function findpls(nach:integer; nap:byte):integer;
 var
  i:integer;
@@ -8041,6 +8083,8 @@ begin
    plsettingsznach[2,9]:=inttostr(SinglePlayerSettings.playaftchangepls);
    plsettingsmass[2,10]:=getfromlangpack('sortallpls');//'Сортировать весь плейлист';
    plsettingsznach[2,10]:=inttostr(SinglePlayerSettings.sortingallpls);
+   plsettingsmass[2,11]:=getfromlangpack('sortmode');//'Сортировать весь плейлист';
+   plsettingsznach[2,11]:=inttostr(plset.sortmode);
 
  {------------------------------------- Звук ----------------------------------}
    plsettingsmass[3,1]:=getfromlangpack('eqon2');//'Включить эквалайзер';
