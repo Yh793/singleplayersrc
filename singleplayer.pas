@@ -591,6 +591,7 @@ procedure saveeq; //сохраняем значения эквалайзера �
 procedure exptree;    //отображать файлы и папки в виде списка
 procedure expsetka;   //отображать файлы и папки в виде сетки
 procedure sortabc;    //сортировать файлы и папки в алфавитном порядке
+procedure sortabcinv;    //сортировать файлы и папки в обратном алфавитном порядке
 procedure sortdate;   //сортировать файлы и папки по дате (сначала старые)
 procedure sortdateinv;   //сортировать файлы и папки по дате (сначала новые)
 procedure nextpls;
@@ -972,7 +973,7 @@ Procedure SetBeginPlayer;     //установка начальных значе
 begin
  curentpage:='singleplayer';  //текущая страница для отрисовки на форме
  oldpage:='singleplayer';
- playerversion:='2.8.3'; {with mpc}
+ playerversion:='2.8.3A'; {with mpc}
  SinglePlayerDir:=ExtractFilePath(ParamStr(0))+'SinglePlayer\';    //каталог с плеером
  AllowStartPlayer:=1;      //ключ отвечающий за возможность запуска плеера. 0 - запрещено, 1 - разрешено
  statusplaylist:=0; // разрешаем операции с плейлистами
@@ -3195,6 +3196,7 @@ begin
             'exptree': begin exptree; SinglePlayerGUI.Invalidate; exit; end;
             'expsetka': begin expsetka; SinglePlayerGUI.Invalidate; exit; end;
             'sortabc': begin sortabc; gettree(curentdir,pospage[pageindex]); SinglePlayerGUI.Invalidate; exit; end;
+            'sortabcinv': begin sortabcinv; gettree(curentdir,pospage[pageindex]); SinglePlayerGUI.Invalidate; exit; end;
             'sortdate': begin sortdate; gettree(curentdir,pospage[pageindex]); SinglePlayerGUI.Invalidate; exit; end;
             'sortdateinv': begin sortdateinv; gettree(curentdir,pospage[pageindex]); SinglePlayerGUI.Invalidate; exit; end;
             'nextpls': begin AfterSwipe:=0; nextpls;  SinglePlayerGUI.Invalidate; exit; end;
@@ -4629,17 +4631,27 @@ try
 
    	if plset.sortmode=0 then begin
     	setvisfromexec('sortabc','true');
+        setvisfromexec('sortabcinv','false');
     	setvisfromexec('sortdate','false');
     	setvisfromexec('sortdateinv','false');
    	end else begin
     	if plset.sortmode=1 then begin
 	    	setvisfromexec('sortabc','false');
-	    	setvisfromexec('sortdate','true');
+            setvisfromexec('sortabcinv','true');
+	    	setvisfromexec('sortdate','false');
 	    	setvisfromexec('sortdateinv','false');
         end else begin
-            setvisfromexec('sortabc','false');
-	    	setvisfromexec('sortdate','false');
-	    	setvisfromexec('sortdateinv','true');
+            if plset.sortmode=2 then begin
+		    	setvisfromexec('sortabc','false');
+	            setvisfromexec('sortabcinv','false');
+		    	setvisfromexec('sortdate','true');
+		    	setvisfromexec('sortdateinv','false');
+	        end else begin
+	            setvisfromexec('sortabc','false');
+	            setvisfromexec('sortabcinv','false');
+		    	setvisfromexec('sortdate','false');
+		    	setvisfromexec('sortdateinv','true');
+			end;
 		end;
 	end;
 
@@ -7193,8 +7205,8 @@ var
 	mass : array [1..10] of string;
 	bufName : string;
 
-    FileList : array of string;
-  	DateList : array of TDateTime;
+    FolderList, FileList : array of string;
+  	FolderDateList, FileDateList : array of TDateTime;
     tmp,tmp2 : String;
     TempDate: TDateTime;
     done: Boolean;
@@ -7215,7 +7227,7 @@ begin
         	SinglePlayerSettings.kolltrackbuf := 0
         else
         	SinglePlayerSettings.kolltrackbuf := SinglePlayerSettings.kolltrack;
-		//i:=0;
+		i:=0;
 		pospage[pageindex] := nfindex;
 		nextpageindex := 0;
 		if plset.treetype=0 then begin
@@ -7234,54 +7246,63 @@ begin
         // считываем все папки из директории
 		if FindFirst('\'+disk+'\*', faDirectory, searchtrack) = 0 then begin repeat // поиск по папкам
 			if ((searchtrack.attr and faDirectory)=faDirectory){$IFNDEF WInCE} and (searchtrack.Name<>'.') and (searchtrack.Name<>'..'){$ENDIF} then begin
-                Setlength(FileList, Length(FileList) + 1);
-    			Setlength(DateList, Length(DateList) + 1);
-    			FileList[High(FileList)]:= searchtrack.Name;
-                DateList[High(DateList)]:= FileDateToDateTime(searchtrack.Time);
+                Setlength(FolderList, Length(FolderList) + 1);
+    			Setlength(FolderDateList, Length(FolderDateList) + 1);
+    			FolderList[High(FolderList)]:= searchtrack.Name;
+                FolderDateList[High(FolderDateList)]:= FileDateToDateTime(searchtrack.Time);
 			end;
 			until FindNext(searchtrack) <> 0;
 			SysUtils.FindClose(searchtrack);
 		end;
 
         // делаем сортировку по названиям
-        j:=0;
-        //plset.sortmode:=0;
-        if (High(FileList)>0) then begin
-         	if (plset.sortmode=0) then begin repeat // по названию
-				tmp:=UpperCase(FileList[j]);
-				tmp2:=UpperCase(FileList[j+1]);
-				if tmp[1]>tmp2[1] then begin
-				    tmp:=FileList[j];
-				    FileList[j]:=FileList[j+1];
-				    FileList[j+1]:=tmp;
-				    j:=-1;
+        if (High(FolderList)>0) then begin
+         	if (plset.sortmode<2) then begin repeat // по названию
+				done:= True;
+                for j:= 0 to High(FolderList) - 1 do begin
+                	tmp:=UpperCase(FolderList[j]);
+					tmp2:=UpperCase(FolderList[j+1]);
+                	if (plset.sortMode=0) then begin // если прямой порядок
+						if (tmp[1]>tmp2[1]) then begin
+	                    	done:= False;
+						    tmp:=FolderList[j];
+						    FolderList[j]:=FolderList[j+1];
+						    FolderList[j+1]:=tmp;
+						end;
+					end else begin  // если обратный порядок
+						if (tmp[1]<tmp2[1]) then begin
+	                    	done:= False;
+						    tmp:=FolderList[j];
+						    FolderList[j]:=FolderList[j+1];
+						    FolderList[j+1]:=tmp;
+						end;
+					end;
 				end;
-				Inc(j);
-				until j=High(FileList) -1;
+				until done;
 	        end	else begin repeat // по дате
                	done:= True;
-		    	for j:= 0 to High(FileList) - 1 do begin
-                    if (plset.sortMode=1) then begin // если начала старые
-				      	if (DateList[j] > DateList[j + 1]) then begin
+		    	for j:= 0 to High(FolderList) - 1 do begin
+                    if (plset.sortMode=2) then begin // если начала старые
+				      	if (FolderDateList[j] > FolderDateList[j + 1]) then begin
 					        done:= False;
-					        tmp:= FileList[j];
-					        FileList[j]:= FileList[j + 1];
-					        FileList[j + 1]:= tmp;
+					        tmp:= FolderList[j];
+					        FolderList[j]:= FolderList[j + 1];
+					        FolderList[j + 1]:= tmp;
 
-					        TempDate:= DateList[j];
-					        DateList[j]:= DateList[j + 1];
-					        DateList[j + 1]:= TempDate;
+					        TempDate:= FolderDateList[j];
+					        FolderDateList[j]:= FolderDateList[j + 1];
+					        FolderDateList[j + 1]:= TempDate;
 				      	end;
                     end else begin // если начала новые
-                        if (DateList[j] < DateList[j + 1]) then begin
+                        if (FolderDateList[j] < FolderDateList[j + 1]) then begin
 					        done:= False;
-					        tmp:= FileList[j];
-					        FileList[j]:= FileList[j + 1];
-					        FileList[j + 1]:= tmp;
+					        tmp:= FolderList[j];
+					        FolderList[j]:= FolderList[j + 1];
+					        FolderList[j + 1]:= tmp;
 
-					        TempDate:= DateList[j];
-					        DateList[j]:= DateList[j + 1];
-					        DateList[j + 1]:= TempDate;
+					        TempDate:= FolderDateList[j];
+					        FolderDateList[j]:= FolderDateList[j + 1];
+					        FolderDateList[j + 1]:= TempDate;
 				      	end;
 					end;
 				end;
@@ -7289,19 +7310,18 @@ begin
         	end;
 		end;
 
-
         // выводим папки на экран
-        for i:= 1 to High(FileList)+1 do begin
+        for j:= 0 to High(FolderList) do begin
             marked:=0;
-			//inc(i);
+			inc(i);
 			if (i>nfindex) then begin
 				SetLength(folders,i+1,7);
-				X2 := SinglePlayerGUI.Canvas.TextWidth(FileList[i-1]);
-				Y2 := SinglePlayerGUI.Canvas.TextHeight(FileList[i-1]);
+				X2 := SinglePlayerGUI.Canvas.TextWidth(FolderList[j]);
+				Y2 := SinglePlayerGUI.Canvas.TextHeight(FolderList[j]);
 
 				if singleplayersettings.manyadd=1 then
                 	for k:=1 to tempallkolltrack do
-                    	if pos(disk+'\'+FileList[i-1],temptrackmas[k])<>0 then begin
+                    	if pos(disk+'\'+FolderList[j],temptrackmas[k])<>0 then begin
                          	marked := 1;
                             break;
                         end;
@@ -7328,7 +7348,7 @@ begin
 
                 if Y1+Y2+seticons[folderIconIndex].height<bottomMargine then begin
 					inc(kolfilefolder);
-                    bufName := UTF8Encode(FileList[i-1]); // конвертируем строку
+                    bufName := UTF8Encode(FolderList[j]); // конвертируем строку
 
 					if marked=0 then // выбираем иконку по маркировке и рисуем ее
                     	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[folderIconIndex])
@@ -7401,7 +7421,7 @@ begin
                         SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[folderIconIndex].width+plset.treetextX ,Y1+plset.treetextY,bufName,textstyle);
                     end;
 
-                    folders[i,1] := disk + '\' + FileList[i-1];
+                    folders[i,1] := disk + '\' + FolderList[j];
 					folders[i,2] := 'folder';
 					folders[i,3] := inttostr(X1);
 					folders[i,4] := inttostr(Y1);
@@ -7422,9 +7442,9 @@ begin
 			end;
 		end;
 
-        if FindFirst('\'+disk+'\*', faDirectory, searchtrack) = 0 then begin repeat
-            marked:=0;
-            if (length(searchtrack.Name)-pos('.mp3',searchtrack.Name)=3) and (pos('.mp3',searchtrack.Name)<>0) or
+        // считываем все музыкальные файлы из директории
+		if FindFirst('\'+disk+'\*', faDirectory, searchtrack) = 0 then begin repeat
+			if (length(searchtrack.Name)-pos('.mp3',searchtrack.Name)=3) and (pos('.mp3',searchtrack.Name)<>0) or
 				(length(searchtrack.Name)-pos('.wav',searchtrack.Name)=3) and (pos('.wav',searchtrack.Name)<>0) or
 				(length(searchtrack.Name)-pos('.ogg',searchtrack.Name)=3) and (pos('.ogg',searchtrack.Name)<>0) or
 				(length(searchtrack.Name)-pos('.flac',searchtrack.Name)=4) and (pos('.flac',searchtrack.Name)<>0) or
@@ -7444,135 +7464,198 @@ begin
 				(length(searchtrack.Name)-pos('.cue',searchtrack.Name)=3) and (pos('.cue',searchtrack.Name)<>0) or
 				(length(searchtrack.Name)-pos('.CUE',searchtrack.Name)=3) and (pos('.CUE',searchtrack.Name)<>0) or
 				(length(searchtrack.Name)-pos('.AIFF',searchtrack.Name)=4) and (pos('.AIFF',searchtrack.Name)<>0) then begin
-					inc(SinglePlayerSettings.kolltrackbuf);
-					trackbuf[SinglePlayerSettings.kolltrackbuf]:=disk+'\'+searchtrack.Name;
-					inc(i);
-
-					if (i>nfindex) then  begin
-						SetLength(folders,i+1,7);
-						X2:=SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name);
-						Y2:=SinglePlayerGUI.Canvas.TextHeight(searchtrack.Name);
-
-						if singleplayersettings.manyadd=1 then
-                        	for k:=1 to tempallkolltrack do
-                                if pos(disk+'\'+searchtrack.name,temptrackmas[k])<>0 then begin
-                                	marked:=1;
-                                 	break;
-                                end;
-
-                        if plset.treetype=0 then begin
-                        	fileIconIndex := getindexicon('musicfile.bmp');
-                        	fileMarkedIconIndex := getindexicon('musicfilemarked.bmp');
-                            bottomMargine := plset.bottomsetka;
-
-							if X1+seticons[fileIconIndex].width>plset.maxrightsetka then begin
-                            	Y1:=Y1+Y2+seticons[fileIconIndex].height+plset.treeintervalvert;
-                                X1:=plset.treeleft;
-                            end;
-						end else begin
-                        	fileIconIndex := getindexicon('musicfiletree.bmp');
-                        	fileMarkedIconIndex := getindexicon('musicfiletreemarked.bmp');
-                            bottomMargine := plset.bottomtree;
-
-							if X1+seticons[fileIconIndex].width>plset.maxrighttree then begin
-                            	Y1:=Y1+seticons[fileIconIndex].height+plset.treeintervalverttree;
-                                X1:=plset.treeleftsp;
-                            end;
-						end;
-
-                        if Y1+Y2+seticons[fileIconIndex].height<bottomMargine then begin
-							inc(kolfilefolder);
-                            bufName := UTF8Encode(searchtrack.Name); // конвертируем строку
-
-							if marked=0 then
-                            	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[fileIconIndex])
-                            else
-                            	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[fileMarkedIconIndex]);
-
-                            if plset.treetype=0 then begin
-								indexmass:=1;
-								kolstrok:=1;
-								for n:=1 to 10 do
-                                	mass[n]:='';
-
-                                if SinglePlayerGUI.Canvas.TextWidth(bufName)>seticons[fileIconIndex].width then begin // если название папки больше ширины папки
-									kolstrok := (SinglePlayerGUI.Canvas.TextWidth(bufName) div seticons[fileIconIndex].width)+1; // то считаем количество строк
-									oneStringLen := length(bufName) div kolstrok; // определяем длину строки
-
-                                    latinLen := 0;
-                                    compensationFlag := 0;
-                                    firstSymbol := 1;
-									for n:=1 to length(bufName) do begin // для каждого символа строки
-										if (length(mass[indexmass])>=(oneStringLen+plset.playlisttextr)) then begin// если вышли за строку
-                                        	if strInArray(bufName[n]) then // считаем количество латиницы, цифр и знаков препинания
-                                            	inc(latinLen);
-                                            if latinLen<(oneStringLen+plset.playlisttextr) then begin // сравниваем с общей длительностью
-                                            	compensationFlag := oneStringLen+plset.playlisttextr+1 - latinLen; // и подсчитываем количество символов под кириллицу
-                                                if (compensationFlag mod 2 <> 0) then // если нечетное число
-                                                	compensationFlag := 1 // то надо сделать компенсацию, т.к. для кириллицы надо 2 байта
-                                                else
-                                                	compensationFlag := 0;
-											end;
-                                            mass[indexmass] += bufName[n]; //заполняем массив
-                                            if compensationFlag=1 then // если нужна компенсация
-												mass[indexmass] += bufName[n+1]; //то заполняем массив еще раз  + IntToStr(compensationFlag)
-		                                	inc(indexmass); // то делаем инкремент
-                                            latinLen := 0;
-                                            firstSymbol :=1;
-										end else begin
-                                        	if compensationFlag=0 then begin // если компенсация не проводилась
-	                                            if strInArray(bufName[n]) then inc(latinLen); // то работаем штатно
-                                                if (firstSymbol=1) then begin
-		                                        	if ((bufName[n]<>' ')) then
-                                                		mass[indexmass] += bufName[n]; //заполняем массив
-                                                firstSymbol := 0;
-												end else
-                                                    mass[indexmass] += bufName[n]; //заполняем массив
-											end else // если проводилась
-                                            	compensationFlag := 0; // то пропускаем итерацию и обнуляем компенсацию
-										end;
-									end;
-								end else // если нет
-									mass[1] := bufName; // то просто перезаписываем название
-
-								if mass[1]<>'' then
-                                	X2:=SinglePlayerGUI.Canvas.TextWidth(mass[1]);
-								if (plset.playlisttextstr<>'max') and (strtointdef(plset.playlisttextstr,0)<>0) and (indexmass>strtointdef(plset.playlisttextstr,0)) then
-                                	indexmass:=strtointdef(plset.playlisttextstr,1);
-								if indexmass>0 then for n:=1 to indexmass do begin
-									if n=1 then
-                                    	sm:=0
-                                    else
-                                    	sm:=SinglePlayerGUI.Canvas.TextHeight(bufName);
-									SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[fileIconIndex].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), mass[n]);
-								end;
-                            end else begin
-                                SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[fileIconIndex].width+plset.treetextX ,Y1+plset.treetextY,bufName,textstyle);
-                            end;
-
-							folders[i,1]:=disk+'\'+searchtrack.Name;
-							folders[i,2]:='files';
-							folders[i,3]:=inttostr(X1);
-							folders[i,4]:=inttostr(Y1);
-                            folders[i,6]:=inttostr(Y1+seticons[fileIconIndex].height);
-
-                            if plset.treetype=0 then begin
-								folders[i,5]:=inttostr(X1+seticons[fileIconIndex].width);
-
-								X1:=X1+seticons[fileIconIndex].width+plset.treeintervalhorz;
-                            end else begin
-								folders[i,5]:=inttostr(X1+seticons[fileIconIndex].width+SinglePlayerGUI.Canvas.TextWidth(searchtrack.Name)+plset.treetextX);
-								X1:=X1+seticons[fileIconIndex].width+plset.maxrighttree;
-                            end;
-						end else begin
-	                        	if nextpageindex=0 then
-	                            nextpageindex:=i-1;
-	                            break;
-	                        end;
-						end;
-					end;
+                Setlength(FileList, Length(FileList) + 1);
+    			Setlength(FileDateList, Length(FileDateList) + 1);
+    			FileList[High(FileList)]:= searchtrack.Name;
+                FileDateList[High(FileDateList)]:= FileDateToDateTime(searchtrack.Time);
+                inc(SinglePlayerSettings.kolltrackbuf);
+				trackbuf[SinglePlayerSettings.kolltrackbuf]:=disk+'\'+searchtrack.Name;
+			end;
 			until FindNext(searchtrack) <> 0;
 			SysUtils.FindClose(searchtrack);
+		end;
+
+        // делаем сортировку по названиям
+        if (High(FileList)>0) then begin
+         	if (plset.sortmode<2) then begin repeat // по названию
+             	done:= True;
+                for j:= 0 to High(FileList) - 1 do begin
+                	tmp:=UpperCase(FileList[j]);
+					tmp2:=UpperCase(FileList[j+1]);
+                	if (plset.sortMode=0) then begin // если прямой порядок
+						if tmp[1]>tmp2[1] then begin
+	                    	done:= False;
+						    tmp:=FileList[j];
+						    FileList[j]:=FileList[j+1];
+						    FileList[j+1]:=tmp;
+						end;
+					end else begin // если обратный порядок
+						if tmp[1]<tmp2[1] then begin
+	                    	done:= False;
+						    tmp:=FileList[j];
+						    FileList[j]:=FileList[j+1];
+						    FileList[j+1]:=tmp;
+						end;
+					end;
+				end;
+				until done;
+	        end	else begin repeat // по дате
+               	done:= True;
+		    	for j:= 0 to High(FileList) - 1 do begin
+                    if (plset.sortMode=2) then begin // если начала старые
+				      	if (FileDateList[j] > FileDateList[j + 1]) then begin
+					        done:= False;
+					        tmp:= FileList[j];
+					        FileList[j]:= FileList[j + 1];
+					        FileList[j + 1]:= tmp;
+
+					        TempDate:= FileDateList[j];
+					        FileDateList[j]:= FileDateList[j + 1];
+					        FileDateList[j + 1]:= TempDate;
+				      	end;
+                    end else begin // если начала новые
+                        if (FileDateList[j] < FileDateList[j + 1]) then begin
+					        done:= False;
+					        tmp:= FileList[j];
+					        FileList[j]:= FileList[j + 1];
+					        FileList[j + 1]:= tmp;
+
+					        TempDate:= FileDateList[j];
+					        FileDateList[j]:= FileDateList[j + 1];
+					        FileDateList[j + 1]:= TempDate;
+				      	end;
+					end;
+				end;
+		  		until done;
+        	end;
+		end;
+
+        // выводим файлы на экран
+        for j:= 0 to High(FileList) do begin
+			inc(i);
+            marked:=0;
+			if (i>nfindex) then  begin
+				SetLength(folders,i+1,7);
+				X2:=SinglePlayerGUI.Canvas.TextWidth(FileList[j]);
+				Y2:=SinglePlayerGUI.Canvas.TextHeight(FileList[j]);
+
+				if singleplayersettings.manyadd=1 then
+                	for k:=1 to tempallkolltrack do
+                        if pos(disk+'\'+FileList[j],temptrackmas[k])<>0 then begin
+                        	marked:=1;
+                         	break;
+                        end;
+
+                if plset.treetype=0 then begin
+                	fileIconIndex := getindexicon('musicfile.bmp');
+                	fileMarkedIconIndex := getindexicon('musicfilemarked.bmp');
+                    bottomMargine := plset.bottomsetka;
+
+					if X1+seticons[fileIconIndex].width>plset.maxrightsetka then begin
+                    	Y1:=Y1+Y2+seticons[fileIconIndex].height+plset.treeintervalvert;
+                        X1:=plset.treeleft;
+                    end;
+				end else begin
+                	fileIconIndex := getindexicon('musicfiletree.bmp');
+                	fileMarkedIconIndex := getindexicon('musicfiletreemarked.bmp');
+                    bottomMargine := plset.bottomtree;
+
+					if X1+seticons[fileIconIndex].width>plset.maxrighttree then begin
+                    	Y1:=Y1+seticons[fileIconIndex].height+plset.treeintervalverttree;
+                        X1:=plset.treeleftsp;
+                    end;
+				end;
+
+                if Y1+Y2+seticons[fileIconIndex].height<bottomMargine then begin
+					inc(kolfilefolder);
+                    bufName := UTF8Encode(FileList[j]); // конвертируем строку
+
+					if marked=0 then
+                    	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[fileIconIndex])
+                    else
+                    	SinglePlayerGUI.Canvas.Draw(X1, Y1, playericon[fileMarkedIconIndex]);
+
+                    if plset.treetype=0 then begin
+						indexmass:=1;
+						kolstrok:=1;
+						for n:=1 to 10 do
+                        	mass[n]:='';
+
+                        if SinglePlayerGUI.Canvas.TextWidth(bufName)>seticons[fileIconIndex].width then begin // если название папки больше ширины папки
+							kolstrok := (SinglePlayerGUI.Canvas.TextWidth(bufName) div seticons[fileIconIndex].width)+1; // то считаем количество строк
+							oneStringLen := length(bufName) div kolstrok; // определяем длину строки
+
+                            latinLen := 0;
+                            compensationFlag := 0;
+                            firstSymbol := 1;
+							for n:=1 to length(bufName) do begin // для каждого символа строки
+								if (length(mass[indexmass])>=(oneStringLen+plset.playlisttextr)) then begin// если вышли за строку
+                                	if strInArray(bufName[n]) then // считаем количество латиницы, цифр и знаков препинания
+                                    	inc(latinLen);
+                                    if latinLen<(oneStringLen+plset.playlisttextr) then begin // сравниваем с общей длительностью
+                                    	compensationFlag := oneStringLen+plset.playlisttextr+1 - latinLen; // и подсчитываем количество символов под кириллицу
+                                        if (compensationFlag mod 2 <> 0) then // если нечетное число
+                                        	compensationFlag := 1 // то надо сделать компенсацию, т.к. для кириллицы надо 2 байта
+                                        else
+                                        	compensationFlag := 0;
+									end;
+                                    mass[indexmass] += bufName[n]; //заполняем массив
+                                    if compensationFlag=1 then // если нужна компенсация
+										mass[indexmass] += bufName[n+1]; //то заполняем массив еще раз  + IntToStr(compensationFlag)
+                                	inc(indexmass); // то делаем инкремент
+                                    latinLen := 0;
+                                    firstSymbol :=1;
+								end else begin
+                                	if compensationFlag=0 then begin // если компенсация не проводилась
+                                        if strInArray(bufName[n]) then inc(latinLen); // то работаем штатно
+                                        if (firstSymbol=1) then begin
+                                        	if ((bufName[n]<>' ')) then
+                                        		mass[indexmass] += bufName[n]; //заполняем массив
+                                        firstSymbol := 0;
+										end else
+                                            mass[indexmass] += bufName[n]; //заполняем массив
+									end else // если проводилась
+                                    	compensationFlag := 0; // то пропускаем итерацию и обнуляем компенсацию
+								end;
+							end;
+						end else // если нет
+							mass[1] := bufName; // то просто перезаписываем название
+
+						if mass[1]<>'' then
+                        	X2:=SinglePlayerGUI.Canvas.TextWidth(mass[1]);
+						if (plset.playlisttextstr<>'max') and (strtointdef(plset.playlisttextstr,0)<>0) and (indexmass>strtointdef(plset.playlisttextstr,0)) then
+                        	indexmass:=strtointdef(plset.playlisttextstr,1);
+						if indexmass>0 then for n:=1 to indexmass do begin
+							if n=1 then
+                            	sm:=0
+                            else
+                            	sm:=SinglePlayerGUI.Canvas.TextHeight(bufName);
+							SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+(((X2 div 2)-(seticons[fileIconIndex].width div 2))*-1),Y1+plset.textinterval+sm*(n-1), mass[n]);
+						end;
+                    end else begin
+                        SinglePlayerGUI.canvas.TextRect(classes.Rect(0,0,800,480), X1+seticons[fileIconIndex].width+plset.treetextX ,Y1+plset.treetextY,bufName,textstyle);
+                    end;
+
+					folders[i,1]:=disk+'\'+FileList[j];
+					folders[i,2]:='files';
+					folders[i,3]:=inttostr(X1);
+					folders[i,4]:=inttostr(Y1);
+                    folders[i,6]:=inttostr(Y1+seticons[fileIconIndex].height);
+
+                    if plset.treetype=0 then begin
+						folders[i,5]:=inttostr(X1+seticons[fileIconIndex].width);
+
+						X1:=X1+seticons[fileIconIndex].width+plset.treeintervalhorz;
+                    end else begin
+						folders[i,5]:=inttostr(X1+seticons[fileIconIndex].width+SinglePlayerGUI.Canvas.TextWidth(FileList[j])+plset.treetextX);
+						X1:=X1+seticons[fileIconIndex].width+plset.maxrighttree;
+                    end;
+				end else begin
+                    	if nextpageindex=0 then
+                        nextpageindex:=i-1;
+                        break;
+                    end;
+				end;
 		end;
 
 		if getkollpagekey=1 then
@@ -7765,9 +7848,15 @@ begin
  plsettingsznach[2,11]:=inttostr(plset.sortmode);
 end;
 
-procedure sortdate;
+procedure sortabcinv;
 begin
  plset.sortmode:=2;
+ plsettingsznach[2,11]:=inttostr(plset.sortmode);
+end;
+
+procedure sortdate;
+begin
+ plset.sortmode:=3;
  plsettingsznach[2,11]:=inttostr(plset.sortmode);
 end;
 
