@@ -973,7 +973,7 @@ Procedure SetBeginPlayer;     //установка начальных значе
 begin
  curentpage:='singleplayer';  //текущая страница для отрисовки на форме
  oldpage:='singleplayer';
- playerversion:='2.8.3A'; {with mpc}
+ playerversion:='2.8.3B'; {with mpc}
  SinglePlayerDir:=ExtractFilePath(ParamStr(0))+'SinglePlayer\';    //каталог с плеером
  AllowStartPlayer:=1;      //ключ отвечающий за возможность запуска плеера. 0 - запрещено, 1 - разрешено
  statusplaylist:=0; // разрешаем операции с плейлистами
@@ -5095,8 +5095,8 @@ if str<>'' then
    '%kolltrack%': begin result:=inttostr(SinglePlayerSettings.kolltrack); exit; end;
    '%skinname%': begin result:=SinglePlayerSettings.skin; exit; end;
    '%curpage%': begin result:=curentpage; exit; end;
-   '%artisttrack%': begin result:=delbanner(artist); exit; end;
-   '%titletrack%': begin result:=delbanner(title); exit; end;
+   '%artisttrack%': begin result:=delbanner(artist); exit; end; //!!!
+   '%titletrack%': begin result:=delbanner(title); exit; end; //!!!
    '%curentdir%': begin result:=curentdir; exit; end;
    '%playfile%': begin result:=curenttrack; exit; end;
    '%curplaylistpage%': begin result:=inttostr(pageindex); exit; end;
@@ -5626,30 +5626,34 @@ begin
     if (directoryexists('\USBDisk3')=false) and (mmcdisks[13]='\SDMMC4') then begin mmcdisks[13]:='none'; end;
    end;
 {------------------------------------------------------------------------------}
-  if SinglePlayerSettings.scrolltrack=1 then scrollTimer.Enabled:=true else
-   begin
-    pr2:=0;
-    pr4:=0;
-    if SinglePlayerGUI.Canvas.TextWidth(artisttitle)>plset.tracktitlewidth then
-     begin
-     if SinglePlayerSettings.track2str=0 then scrolltitle:=delbanner(artist+title) else scrolltitle:=delbanner(artist);
-      artisttitle:='';
-      for i:=1 to length(scrolltitle) do if SinglePlayerGUI.Canvas.TextWidth(artisttitle)<=plset.tracktitlewidth then artisttitle:=artisttitle+scrolltitle[i];
-     end;
+	if SinglePlayerSettings.scrolltrack=1 then
+  		scrollTimer.Enabled:=true
+    else begin
+    	pr2:=0;
+    	pr4:=0;
+    	if SinglePlayerGUI.Canvas.TextWidth(artisttitle)>plset.tracktitlewidth then begin
+     		if SinglePlayerSettings.track2str=0 then
+            	scrolltitle:=delbanner(artist+title)
+            else
+            	scrolltitle:=delbanner(artist);
+      		artisttitle:='';
+      		for i:=1 to length(scrolltitle) do
+            	if SinglePlayerGUI.Canvas.TextWidth(artisttitle)<=plset.tracktitlewidth then
+                	artisttitle:=artisttitle+scrolltitle[i]; //!!!
+     	end;
 
-     if SinglePlayerSettings.track2str=1 then
-      begin
-       pr2:=0;
-       pr4:=0;
-        if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))>plset.tracktitlewidth then
-         begin
-          scrolltitle2:=delbanner(title);
-          scrolltitlestr:='';
-          for i:=1 to length(scrolltitle2) do if SinglePlayerGUI.Canvas.TextWidth(UTF8Encode(scrolltitlestr))<=plset.tracktitlewidth then scrolltitlestr:=scrolltitlestr+scrolltitle2[i];
-         end;
-       end;
-     end;
-
+		if SinglePlayerSettings.track2str=1 then begin
+       		pr2:=0;
+       		pr4:=0;
+        	if SinglePlayerGUI.Canvas.TextWidth(scrolltitlestr)>plset.tracktitlewidth then begin
+          		scrolltitle2:=delbanner(title);
+          		scrolltitlestr:='';
+          		for i:=1 to length(scrolltitle2) do
+                    if SinglePlayerGUI.Canvas.TextWidth(scrolltitlestr)<=plset.tracktitlewidth then
+                    	scrolltitlestr:=scrolltitlestr+scrolltitle2[i]; //!!!
+         	end;
+       	end;
+    end;
 end;
 
 procedure TSinglePlayerGUI.scrollTimerTimer(Sender: TObject);
@@ -6330,7 +6334,7 @@ begin
    if (artist+title='') or (singleplayersettings.readtags=0) then
     begin
       if SinglePlayerSettings.autoeq=1 then setautoeq(0);
-      artist:=extractfilename(ChangeFileExt(curenttrack,''));
+      artist:= UTF8Encode(extractfilename(ChangeFileExt(curenttrack,''))); //!!!
       title:='';
      end;
    artist:=delbadtext(artist);
